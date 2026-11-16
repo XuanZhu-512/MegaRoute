@@ -31,6 +31,8 @@ struct Shape {
     std::vector<Point> polygon;
     std::vector<int> layers;
     bool fixed = true;
+    // One plated pad occupies every listed layer and is a single electrical terminal.
+    bool plated = false;
 };
 double gap(const Shape &a, const Shape &b);
 double boundary_gap(const Shape &a, const std::vector<Point> &polygon);
@@ -53,7 +55,9 @@ struct Board {
 struct Config {
     std::string algorithm = "baseline_fixed_strict";
     double step = .0254, beta = 5, d_min = .0254, lambda_v = 1, time_limit = 60;
+    double penalty_L = 200, penalty_k = .4, penalty_mu = 10;
     size_t max_nodes = 1000000, max_records = 2000000;
+    int max_iterations = 20;
 };
 struct Violation {
     std::string rule, a, b;
@@ -66,8 +70,13 @@ struct Connection {
 };
 struct Result {
     std::vector<Shape> copper;
+    // Best inspected solution, including DRC violations. Strict searches leave this empty.
+    std::vector<Shape> diagnostic;
+    bool has_diagnostic = false;
     std::string reason = "finished";
     size_t expanded = 0;
+    int iterations = 0;
+    double last_path_drc = 0;
     Json failures = Json::array();
 };
 using Observer = std::function<void(const Json &)>;

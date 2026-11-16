@@ -51,13 +51,17 @@ static std::vector<int> layers(const Json &j, int count) {
     return {result.begin(), result.end()};
 }
 static Shape shape(const Json &j, const Board &b, bool fixed) {
-    fields(j, {"id", "net", "kind", "center", "radius", "points", "a", "b", "width", "layers", "drill"});
+    fields(j, {"id", "net", "kind", "center", "radius", "points", "a", "b", "width", "layers", "drill", "plated"});
     Shape s;
     s.id = j.at("id").get<std::string>();
     require(!s.id.empty(), "empty shape id");
     s.kind = j.at("kind").get<std::string>();
     s.net = j.value("net", std::string{});
     s.fixed = fixed;
+    if (j.contains("plated")) {
+        require(j.at("plated").is_boolean(), "plated must be boolean");
+        s.plated = j.at("plated").get<bool>();
+    }
     if (!s.net.empty())
         net(b, s.net);
     s.layers = layers(j.at("layers"), b.layers);
@@ -82,10 +86,10 @@ static Shape shape(const Json &j, const Board &b, bool fixed) {
         require(inside(s.a, s.polygon), "polygon access center outside copper");
     } else
         throw std::runtime_error("unsupported_feature: shape " + s.kind);
-    if (s.kind != "via")
-        require(
-            s.layers.size() == 1,
-            "unsupported_feature: multilayer pads require explicit plated connectivity (not implemented)");
+    require(!s.plated || s.kind == "circle" || s.kind == "polygon", "plated applies only to pads");
+    if (s.kind != "via" && !s.plated)
+        require(s.layers.size() == 1,
+                "unsupported_feature: multilayer copper requires plated=true");
     return s;
 }
 Board parse_board(const Json &j) {
@@ -149,7 +153,8 @@ Board parse_board(const Json &j) {
                 require((s.kind == "circle" || s.kind == "polygon") && !s.net.empty(),
                         "pad requires net and circle/polygon");
             else
-                require(s.kind == "segment" || s.kind == "via", "fixed_copper supports segment/via");
+                require(s.kind == "segment" || s.kind == "via" || s.kind == "polygon",
+                        "fixed_copper supports segment/via/polygon");
             b.copper.push_back(s);
         }
     }
@@ -167,12 +172,12 @@ Board parse_board(const Json &j) {
 }
 Config parse_config(const Json &j) {
     fields(j, {"schema_version", "algorithm", "step_mm", "beta", "d_min_mm", "lambda_v", "time_limit_s",
-               "max_expanded_nodes", "max_records"});
+               "max_expanded_nodes", "max_records", "max_iterations", "penalty_L", "penalty_k", "penalty_mu"});
     require(j.at("schema_version") == "1.0", "unknown config schema");
     Config c;
     c.algorithm = j.value("algorithm", c.algorithm);
-    require(c.algorithm == "baseline_fixed_strict" || c.algorithm == "adaptive_strict",
-            "unsupported_algorithm: full negotiated MegaRoute is not implemented");
+    require(c.algorithm == "baseline_fixed_strict" || c.algorithm == "adaptive_strict" || c.algorithm == "megaroute",
+            "unsupported_algorithm: use megaroute for negotiated rerouting");
     auto set = [&](const char *key, double &value) {
         if (j.contains(key))
             value = number(j[key]);
@@ -182,6 +187,15 @@ Config parse_config(const Json &j) {
     set("d_min_mm", c.d_min);
     set("lambda_v", c.lambda_v);
     set("time_limit_s", c.time_limit);
+    set("penalty_L", c.penalty_L);
+    set("penalty_k", c.penalty_k);
+    set("penalty_mu", c.penalty_mu);
+    if (j.contains("max_iterations")) {
+        require(j.at("max_iterations").is_number_integer(), "max_iterations must be integer");
+        auto v = j.at("max_iterations").get<long long>();
+        require(v >= 1 && v <= 20, "max_iterations must be 1..20");
+        c.max_iterations = static_cast<int>(v);
+    }
     for (auto item : {std::pair<const char *, size_t *>{"max_expanded_nodes", &c.max_nodes},
                       {"max_records", &c.max_records}})
         if (j.contains(item.first)) {
@@ -192,6 +206,9 @@ Config parse_config(const Json &j) {
         }
     require(c.step > eps && c.d_min >= 0 && c.beta >= 1 && c.lambda_v >= 0 && c.time_limit > 0,
             "invalid config range");
+    require(c.penalty_L > 0 && c.penalty_k > 0 && c.penalty_mu > 0, "invalid logistic penalty");
+    if (c.algorithm == "megaroute")
+        logistic_penalty(1, c.penalty_L, c.penalty_k, c.penalty_mu);
     return c;
 }
 Json config_json(const Config &c) {
@@ -203,7 +220,11 @@ Json config_json(const Config &c) {
             {"lambda_v", c.lambda_v},
             {"time_limit_s", c.time_limit},
             {"max_expanded_nodes", c.max_nodes},
-            {"max_records", c.max_records}};
+            {"max_records", c.max_records},
+            {"max_iterations", c.max_iterations},
+            {"penalty_L", c.penalty_L},
+            {"penalty_k", c.penalty_k},
+            {"penalty_mu", c.penalty_mu}};
 }
 Json routes_json(const std::vector<Shape> &ss) {
     Json arr = Json::array();

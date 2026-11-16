@@ -9,7 +9,8 @@
     "algorithm": {
       "enum": [
         "baseline_fixed_strict",
-        "adaptive_strict"
+        "adaptive_strict",
+        "megaroute"
       ]
     },
     "step_mm": {
@@ -44,7 +45,15 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 10000000
-    }
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "penalty_L": {"type": "number", "exclusiveMinimum": 0},
+    "penalty_k": {"type": "number", "exclusiveMinimum": 0},
+    "penalty_mu": {"type": "number", "exclusiveMinimum": 0}
   },
   "required": [
     "schema_version"

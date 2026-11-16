@@ -79,7 +79,17 @@ int main(int argc, char **argv) {
              std::chrono::duration<double>(std::chrono::steady_clock::now() - check_start).count()}};
         metrics["termination_reason"] = result.reason;
         metrics["expanded_nodes"] = result.expanded;
+        metrics["iterations"] = result.iterations;
+        metrics["last_path_drc"] = result.last_path_drc;
         metrics["search_failures"] = result.failures;
+        if (result.has_diagnostic) {
+            auto diagnostic = evaluate(board, result.diagnostic);
+            metrics["diagnostic"] = {{"C_routed", diagnostic["C_routed"]},
+                                     {"DRC", diagnostic["DRC"]},
+                                     {"WL_mm", diagnostic["WL_mm"]},
+                                     {"VC", diagnostic["VC"]}};
+            write_json((out / "diagnostic_routes.json").string(), routes_json(result.diagnostic));
+        }
         metrics["implementation"] = "pcb-bench-0.1.0";
         metrics["compiler"] =
 #ifdef __VERSION__

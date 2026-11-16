@@ -57,4 +57,27 @@ class KiCadGeometryConverter:
 
     def export_routes(self, bundle: GeometryIRBundle, routes: GeometryRoutingResult,
                       workdir: Path) -> RoutedKiCadCase:
-        raise UnsupportedCapability("geometry_to_kicad_writeback_not_implemented")
+        self.preflight()
+        workdir = workdir.resolve()
+        if workdir.exists():
+            raise ValueError("writeback destination must not exist")
+        initial = fingerprints(bundle.source_case)
+        workdir.parent.mkdir(parents=True, exist_ok=True)
+        copied = snapshot(bundle.source_case, workdir)
+        route_data = json.loads(routes.added_copper.read_text(encoding="utf-8"))
+        copper = route_data.get("copper", [])
+        report = {"added": 0, "uuids": [], "preserved_without_routes": not copper}
+        if copper:
+            worker = Path(__file__).with_name("kicad_write_worker.py")
+            proc = subprocess.run([str(self.python_executable), str(worker), "--board", str(copied.board),
+                                   "--out", str(copied.board), "--routes", str(routes.added_copper),
+                                   "--geometry", str(bundle.board_ir),
+                                   "--expected-version", self.expected_version],
+                                  capture_output=True, text=True, timeout=120)
+            if proc.returncode:
+                raise RuntimeError(f"KiCad route writeback failed: {proc.stderr.strip()}")
+            report = json.loads(proc.stdout)
+        if fingerprints(bundle.source_case) != initial:
+            raise RuntimeError("original source changed during writeback")
+        (workdir / "writeback_report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        return RoutedKiCadCase(copied, raw_artifacts=(copied.board,), diagnostics=report)

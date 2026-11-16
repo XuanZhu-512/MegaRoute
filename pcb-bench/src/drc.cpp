@@ -249,7 +249,7 @@ Json evaluate(const Board &b, const std::vector<Shape> &added) {
              {"copper_short", "clearance", "min_width", "board_edge", "board_hole", "keepout", "annular_ring",
               "through_via_span", "connectivity"}},
             {"unsupported_features",
-             {"blind_buried_vias", "multilayer_pads", "polygon_pad_holes", "net_class_pair_rules",
+             {"blind_buried_vias", "polygon_pad_holes", "net_class_pair_rules",
               "differential_pairs", "length_matching", "manufacturing_drill_clearance", "full_angle_rules",
               "EasyEDA"}}};
 }

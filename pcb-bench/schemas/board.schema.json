@@ -112,6 +112,9 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "maximum": 1000000.0
+              },
+              "plated": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -169,6 +172,9 @@
                   "maxItems": 2
                 },
                 "minItems": 3
+              },
+              "plated": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -298,6 +304,38 @@
               "drill",
               "layers"
             ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string", "minLength": 1},
+              "net": {"type": "string"},
+              "layers": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 0, "maximum": 31},
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "kind": {"const": "polygon"},
+              "center": {
+                "type": "array",
+                "items": {"type": "number", "minimum": -1000000.0, "maximum": 1000000.0},
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {"type": "number", "minimum": -1000000.0, "maximum": 1000000.0},
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minItems": 3
+              }
+            },
+            "required": ["id", "kind", "center", "points", "layers"],
             "additionalProperties": false
           }
         ]

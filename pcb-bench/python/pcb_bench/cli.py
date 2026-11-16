@@ -7,6 +7,8 @@ from .backends import BACKENDS
 from .cases import load_case, snapshot
 from .evaluation import KiCadToolchain
 from .pipeline import make_plan
+from .adapt import adapt_files
+from .contracts import GeometryIRBundle, GeometryRoutingResult, KiCadCase
 from .converters import KiCadGeometryConverter
 
 
@@ -28,6 +30,18 @@ def main(argv=None):
     export.add_argument("--kicad-python", required=True)
     export.add_argument("--expected-version", required=True)
     export.add_argument("--max-error-mm", type=float, default=.005)
+    adapt = sub.add_parser("adapt-geometry", help="convert kicad-geometry JSON into a routing board")
+    adapt.add_argument("--geometry", type=Path, required=True)
+    adapt.add_argument("--rules", type=Path, required=True)
+    adapt.add_argument("--out", type=Path, required=True)
+    write = sub.add_parser("write-routes", help="append routes.json copper onto a copy of a KiCad board")
+    write.add_argument("--board", type=Path, required=True)
+    write.add_argument("--project", type=Path, required=True)
+    write.add_argument("--routes", type=Path, required=True)
+    write.add_argument("--geometry", type=Path, required=True)
+    write.add_argument("--out", type=Path, required=True)
+    write.add_argument("--kicad-python", required=True)
+    write.add_argument("--expected-version", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "export-geometry":
@@ -35,6 +49,20 @@ def main(argv=None):
             bundle = converter.import_board(load_case(args.case), args.out)
             result = {"geometry": str(bundle.board_ir), "report": str(bundle.conversion_report),
                       "status": "geometry_exported", "cpp_geometry_v1_compatible": False}
+        elif args.command == "write-routes":
+            board = args.board.resolve()
+            project = args.project.resolve()
+            case = KiCadCase(board.stem, board, project)
+            bundle = GeometryIRBundle(args.geometry.resolve(), args.geometry.resolve(),
+                                      args.geometry.resolve(), case, {})
+            routed = KiCadGeometryConverter(args.kicad_python, args.expected_version).export_routes(
+                bundle, GeometryRoutingResult(args.routes.resolve()), args.out)
+            result = {"board": str(routed.case.board), "status": "routes_written",
+                      **routed.diagnostics}
+        elif args.command == "adapt-geometry":
+            board = adapt_files(args.geometry, args.rules, args.out)
+            result = {"board": str(args.out), "status": "routing_board", "pads": len(board["pads"]),
+                      "nets": len(board["nets"]), "fixed_copper": len(board["fixed_copper"])}
         elif args.command == "doctor":
             result = KiCadToolchain.load(args.toolchain).probe()
         elif args.command == "snapshot":
