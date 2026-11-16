@@ -1,5 +1,5 @@
 {
   "schema_version": "1.0",
-  "kicad_cli": "kicad-cli",
+  "kicad_cli": "/home/xuanzhu/projects/PCBWorld/build_rl/kicad/kicad-cli",
   "exact_version": "9.0.8"
 }

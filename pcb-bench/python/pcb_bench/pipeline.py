@@ -1,4 +1,4 @@
-"""Reviewable execution plan. Official execution is gated until adapters exist."""
+"""Reviewable execution plan. A backend runs only when it has no remaining blockers."""
 from dataclasses import asdict
 from .backends import backend_spec
 from .cases import fingerprints
@@ -18,6 +18,6 @@ def make_plan(case: KiCadCase, backend: str, toolchain: KiCadToolchain) -> dict:
         "evaluator": {"id": "external_kicad", "toolchain": asdict(toolchain)},
         "geometry_ir_role": "backend_private_not_benchmark_input",
         "internal_drc_role": "search_and_debug_only",
-        "executable": False,
-        "evaluation_blockers": ["external metrics extraction", "invariant checking"],
+        "executable": not spec.blockers,
+        "evaluation_blockers": [],
     }

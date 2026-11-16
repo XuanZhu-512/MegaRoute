@@ -74,8 +74,12 @@ class ArchitectureTests(unittest.TestCase):
             self.assertEqual(plan['output_format'], 'kicad_pcb')
             self.assertEqual(plan['evaluator']['id'], 'external_kicad')
             self.assertEqual(plan['pipeline'][-1], 'external_kicad_evaluation')
-            self.assertFalse(plan['executable'])
-            with self.assertRaises(UnsupportedCapability):
+            self.assertEqual(plan['executable'], not BACKENDS[backend].blockers)
+            self.assertEqual(plan['evaluation_blockers'], [])
+            if BACKENDS[backend].blockers:
+                with self.assertRaises(UnsupportedCapability):
+                    BACKENDS[backend].preflight()
+            else:
                 BACKENDS[backend].preflight()
 
     def test_converter_never_silently_passes_through(self):
@@ -90,8 +94,7 @@ class ArchitectureTests(unittest.TestCase):
                     lock.probe()
             with patch('pcb_bench.evaluation.subprocess.run', return_value=subprocess.CompletedProcess([],0,'9.0.8\n','')):
                 self.assertEqual(lock.probe()['version'], '9.0.8')
-                with self.assertRaises(UnsupportedCapability):
-                    ExternalKiCadEvaluator(lock).preflight()
+                self.assertEqual(ExternalKiCadEvaluator(lock).preflight()['version'], '9.0.8')
         with patch('pcb_bench.evaluation.shutil.which', return_value=None):
             with self.assertRaisesRegex(RuntimeError, 'unavailable'):
                 lock.probe()

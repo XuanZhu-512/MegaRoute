@@ -10,6 +10,7 @@ from .pipeline import make_plan
 from .adapt import adapt_files
 from .contracts import GeometryIRBundle, GeometryRoutingResult, KiCadCase
 from .converters import KiCadGeometryConverter
+from .runner import execute_run
 
 
 def main(argv=None):
@@ -42,6 +43,18 @@ def main(argv=None):
     write.add_argument("--out", type=Path, required=True)
     write.add_argument("--kicad-python", required=True)
     write.add_argument("--expected-version", required=True)
+    run = sub.add_parser("run", help="route one case with megaroute or krt and write HTML plus evaluation")
+    run.add_argument("--case", type=Path, required=True)
+    run.add_argument("--backend", choices=list(BACKENDS), required=True)
+    run.add_argument("--out", type=Path, required=True)
+    run.add_argument("--toolchain", type=Path, required=True)
+    run.add_argument("--kicad-python", type=Path, required=True)
+    run.add_argument("--expected-version", required=True)
+    run.add_argument("--router", type=Path)
+    run.add_argument("--config", type=Path)
+    run.add_argument("--krt-root", type=Path)
+    run.add_argument("--routing-seconds", type=float, default=300)
+    run.add_argument("--evaluation-seconds", type=float, default=120)
     args = parser.parse_args(argv)
     try:
         if args.command == "export-geometry":
@@ -63,6 +76,11 @@ def main(argv=None):
             board = adapt_files(args.geometry, args.rules, args.out)
             result = {"board": str(args.out), "status": "routing_board", "pads": len(board["pads"]),
                       "nets": len(board["nets"]), "fixed_copper": len(board["fixed_copper"])}
+        elif args.command == "run":
+            result = execute_run(args.case, args.backend, args.out, args.toolchain, args.kicad_python,
+                                 args.expected_version, router=args.router, config=args.config,
+                                 krt_root=args.krt_root, routing_seconds=args.routing_seconds,
+                                 evaluation_seconds=args.evaluation_seconds)
         elif args.command == "doctor":
             result = KiCadToolchain.load(args.toolchain).probe()
         elif args.command == "snapshot":

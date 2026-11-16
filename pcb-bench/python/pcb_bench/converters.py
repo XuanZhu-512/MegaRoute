@@ -10,10 +10,11 @@ from .contracts import (GeometryIRBundle, GeometryRoutingResult, KiCadCase,
 
 
 class KiCadGeometryConverter:
-    def __init__(self, python_executable=None, expected_version=None, max_error_mm=.005):
+    def __init__(self, python_executable=None, expected_version=None, max_error_mm=.005, env=None):
         self.python_executable = python_executable
         self.expected_version = expected_version
         self.max_error_mm = max_error_mm
+        self.env = env
 
     def preflight(self) -> None:
         if not self.python_executable or not self.expected_version:
@@ -35,7 +36,7 @@ class KiCadGeometryConverter:
             proc = subprocess.run([str(self.python_executable), str(worker), '--board', str(source.board),
                                    '--out', str(staging), '--expected-version', self.expected_version,
                                    '--max-error-mm', str(self.max_error_mm)],
-                                  capture_output=True, text=True, timeout=120)
+                                  capture_output=True, text=True, timeout=120, env=self.env)
             if proc.returncode:
                 raise RuntimeError(f"KiCad geometry export failed: {proc.stderr.strip()}")
             if fingerprints(case) != initial or fingerprints(source) != initial:
@@ -73,7 +74,7 @@ class KiCadGeometryConverter:
                                    "--out", str(copied.board), "--routes", str(routes.added_copper),
                                    "--geometry", str(bundle.board_ir),
                                    "--expected-version", self.expected_version],
-                                  capture_output=True, text=True, timeout=120)
+                                  capture_output=True, text=True, timeout=120, env=self.env)
             if proc.returncode:
                 raise RuntimeError(f"KiCad route writeback failed: {proc.stderr.strip()}")
             report = json.loads(proc.stdout)
