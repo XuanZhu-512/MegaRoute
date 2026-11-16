@@ -200,6 +200,8 @@ The paper does not specify a C++ standard, build system, third-party geometry li
 
 ### 5.2 目标目录
 
+数据统一位于与 `pcb-bench/` 并列的 `dataset/`：`dataset/test/` 存放 KiCad 测试板，`dataset/geometry-fixtures/` 存放内部 JSON 几何夹具。以下为程序模块目标，命令示例从 `pcb-bench/` 执行。
+
 ```text
 MegaRoute/
 ├── README.md
@@ -221,9 +223,6 @@ MegaRoute/
 ├── adapters/
 │   └── easyeda/                  # 仅接口说明与映射约定；暂不写解析脚本
 ├── configs/                      # 基线、完整算法、消融、规模实验配置
-├── data/
-│   ├── synthetic/                # 小型确定性案例及场景生成参数
-│   └── benchmarks/               # 真实数据清单、来源与划分；后续接入
 ├── tools/
 │   ├── generate_cases/           # 标准格式合成板生成
 │   ├── experiments/              # 批量运行、超时管理、汇总
@@ -293,8 +292,8 @@ EasyEDA 适配器后续负责单位、层、图形、网络和规则到上述模
 cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
-megaroute_cli validate --board data/synthetic/two_net.json
-megaroute_cli route --board data/synthetic/two_net.json --config configs/megaroute.json --out results/demo
+megaroute_cli validate --board ../dataset/geometry-fixtures/two_net.json
+megaroute_cli route --board ../dataset/geometry-fixtures/two_net.json --config configs/megaroute.json --out results/demo
 megaroute_cli check --board results/demo/board.json --routes results/demo/routes.json
 ```
 

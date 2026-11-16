@@ -1,5 +1,9 @@
 # KiCad-first benchmark architecture
 
+更新：KiCad -> 结构化几何提取已实现并在 10.0.8 上验证，详见
+[GEOMETRY_EXPORT.md](GEOMETRY_EXPORT.md)。几何提取协议尚未适配旧 C++ 路由
+模型，反向回写与正式评分仍待完成；以下双向契约与整体管线仍是目标边界。
+
 本文件是当前架构决策。上级 README 中更早的“JSON 为平台输入”“内部 DRC 作为实验评分”等描述，现仅适用于几何核心开发测试。正式跨算法比较以本文件为准。
 
 ## 1. 公共输入和输出
@@ -27,7 +31,8 @@ preservation checks -> ONE pinned KiCad external evaluator -> benchmark metrics
 python/pcb_bench/
   contracts.py     KiCadCase / GeometryIRBundle / RouterBackend / KiCadEvaluator
   cases.py         案例路径校验、规则文件检查、不可变快照、文件哈希
-  converters.py    KiCad <-> IR 双向契约；当前明确抛出未实现错误
+  converters.py    KiCad 几何导出 worker 调度；回写明确抛出未实现错误
+  kicad_export_worker.py  指定版本 pcbnew 原生多边形提取
   backends.py      megaroute / freerouting / krt 后端身份、执行阶段及阻塞项
   evaluation.py    KiCad 精确版本探测、DRC 命令构造、外部评分接口
   pipeline.py      公共执行计划；适配器完成前 executable=false
@@ -35,8 +40,8 @@ python/pcb_bench/
 src/               现有 C++ 几何与布线核心，内部 DRC 保留
 schemas/           原有 geometry IR、routes 和内部诊断协议
 configs/           公共 case 模板、KiCad 版本锁、算法内部配置
-data/kicad/        正式案例入口（当前没有真实板夹具）
-data/synthetic/    旧 JSON 几何测试夹具，不作为跨工具正式数据集
+../dataset/test/  KiCad 测试板及公共案例清单
+../dataset/geometry-fixtures/  JSON 几何测试夹具，不作为正式数据集
 ```
 
 不移动/重写已验证的 C++ 文件；Python 调度层与 C++ 算法层通过文件和子进程边界连接。Python 包支持安装入口 `pcb-bench`，也可直接运行 `python tools/bench.py`。
@@ -102,7 +107,7 @@ python tools/bench.py plan --case path/to/case.json --backend megaroute --toolch
 python tools/bench.py snapshot --case path/to/case.json --out results/my-run/input
 ```
 
-`case.example.json` 是路径模板，不捏造可用的真实 KiCad 板。`plan` 只检查案例文件契约，不做 PCB 语义解析、路由或评分。当前不提供容易误用的正式 `run` 命令；三个 backend 和完整 evaluator 尚未接通，preflight 明确返回未实现。
+`configs/case.example.json` 与 `../dataset/test/case.json` 均指向现有测试合成板。`plan` 只检查案例文件契约，不做 PCB 语义解析、路由或评分。当前不提供容易误用的正式 `run` 命令；三个 backend 和完整 evaluator 尚未接通，preflight 明确返回未实现。
 
 实现顺序：① 锁定本机 KiCad/worker 工具链和真实夹具；② 外部基线测量及 DRC/指标提取；③ KiCad -> IR 与原板回写的 round-trip 测试；④ 包装现有严格几何路由器作为明确命名的开发基线，再接完整 MegaRoute；⑤ DSN/SES 与 Freerouting；⑥ KRT；⑦ 同板同规则对照实验。
 

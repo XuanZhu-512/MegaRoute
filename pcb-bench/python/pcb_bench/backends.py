@@ -17,7 +17,8 @@ class BackendSpec:
 BACKENDS = {
     "megaroute": BackendSpec("megaroute", (
         "kicad_to_geometry_ir", "cpp_geometry_router", "geometry_ir_to_kicad"), (
-        "bidirectional KiCad/IR bridge", "full MegaRoute negotiated rerouting")),
+        "native geometry export to C++ routing-model adaptation",
+        "geometry-to-KiCad writeback", "full MegaRoute negotiated rerouting")),
     "freerouting": BackendSpec("freerouting", (
         "kicad_to_dsn", "freerouting_process", "ses_to_kicad"), (
         "KiCad DSN/SES bridge", "pinned Freerouting launcher")),

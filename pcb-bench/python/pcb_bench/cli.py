@@ -7,6 +7,7 @@ from .backends import BACKENDS
 from .cases import load_case, snapshot
 from .evaluation import KiCadToolchain
 from .pipeline import make_plan
+from .converters import KiCadGeometryConverter
 
 
 def main(argv=None):
@@ -21,9 +22,20 @@ def main(argv=None):
     prepare.add_argument("--out", type=Path, required=True)
     doctor = sub.add_parser("doctor", help="verify exact installed KiCad version")
     doctor.add_argument("--toolchain", type=Path, required=True)
+    export = sub.add_parser("export-geometry", help="extract copper polygons using KiCad pcbnew")
+    export.add_argument("--case", type=Path, required=True)
+    export.add_argument("--out", type=Path, required=True)
+    export.add_argument("--kicad-python", required=True)
+    export.add_argument("--expected-version", required=True)
+    export.add_argument("--max-error-mm", type=float, default=.005)
     args = parser.parse_args(argv)
     try:
-        if args.command == "doctor":
+        if args.command == "export-geometry":
+            converter = KiCadGeometryConverter(args.kicad_python, args.expected_version, args.max_error_mm)
+            bundle = converter.import_board(load_case(args.case), args.out)
+            result = {"geometry": str(bundle.board_ir), "report": str(bundle.conversion_report),
+                      "status": "geometry_exported", "cpp_geometry_v1_compatible": False}
+        elif args.command == "doctor":
             result = KiCadToolchain.load(args.toolchain).probe()
         elif args.command == "snapshot":
             case = snapshot(load_case(args.case), args.out)

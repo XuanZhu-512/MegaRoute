@@ -22,6 +22,8 @@ class KiCadCase:
 @dataclass(frozen=True)
 class GeometryIRBundle:
     """IR alone is insufficient to reconstruct the entire original KiCad project."""
+    # Read schema_version before consuming: native kicad-geometry-1.0 extraction
+    # is richer than the C++ core's existing 1.0 routing JSON and is not interchangeable.
     board_ir: Path
     source_map: Path
     conversion_report: Path

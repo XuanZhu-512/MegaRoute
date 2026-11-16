@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "case_id": "example",
-  "board": "../data/kicad/example/example.kicad_pcb",
-  "project": "../data/kicad/example/example.kicad_pro",
+  "case_id": "test_board_00000",
+  "board": "../../dataset/test/board_00000.kicad_pcb",
+  "project": "../../dataset/test/board_00000.kicad_pro",
   "copper_policy": "preserve_input"
 }

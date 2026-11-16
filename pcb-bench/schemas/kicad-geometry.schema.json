@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KiCad-native geometry extraction v1.0 (not C++ routing IR)",
+  "type": "object",
+  "required": ["schema_version", "units", "coordinate_system", "layers", "outline", "nets", "pads", "tracks_and_vias", "copper_graphics"],
+  "properties": {
+    "schema_version": {"const": "kicad-geometry-1.0"},
+    "units": {"const": "mm"},
+    "coordinate_system": {"type": "string"},
+    "layers": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["index", "kicad_id", "name"]}},
+    "outline": {"$ref": "#/$defs/polygons"},
+    "nets": {"type": "array", "items": {"type": "object", "required": ["code", "name"]}},
+    "pads": {"type": "array", "items": {"allOf": [{"$ref": "#/$defs/copperObject"}], "required": ["plated", "drill_size_mm", "position_mm", "attribute", "net_code", "footprint_uuid"]}},
+    "tracks_and_vias": {"type": "array", "items": {"$ref": "#/$defs/copperObject"}},
+    "copper_graphics": {"type": "array", "items": {"$ref": "#/$defs/copperObject"}}
+  },
+  "$defs": {
+    "point": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+    "ring": {"type": "array", "items": {"$ref": "#/$defs/point"}, "minItems": 3},
+    "polygons": {"type": "array", "items": {"type": "object", "required": ["outer", "holes"], "properties": {"outer": {"$ref": "#/$defs/ring"}, "holes": {"type": "array", "items": {"$ref": "#/$defs/ring"}}}}},
+    "copperObject": {"type": "object", "required": ["id", "copper"], "properties": {"id": {"type": "string"}, "copper": {"type": "array", "items": {"type": "object", "required": ["layer", "polygons"], "properties": {"layer": {"type": "integer", "minimum": 0}, "polygons": {"$ref": "#/$defs/polygons"}}}}}}
+  }
+}

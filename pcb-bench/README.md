@@ -1,15 +1,21 @@
 # pcb-bench
 
+**最新进展：** 已实现 [KiCad 原生几何导出](docs/GEOMETRY_EXPORT.md)，并用本机
+KiCad 10.0.8 验证 `dataset/test` 合成板。输出是独立的 `kicad-geometry-1.0`
+结构化提取协议，尚不能直接输入旧 C++ 路由器；回写和正式外部评测仍待实现。
+
 项目已调整为 **KiCad 输入、KiCad 输出、统一外部 KiCad 评测** 的多算法 bench。当前完成调度层契约、案例快照与版本检查，正式转换/外部路由/外部指标提取尚未接通。详细边界见 [架构说明](docs/ARCHITECTURE.md)。
 
 现有 C++17 几何核心仍可独立运行，覆盖 **P0-P3 最小闭环及部分 P4**；其 JSON 输入、内部 DRC 和 Python 实验工具属于开发测试通道，不代表正式 KiCad benchmark 或完整 MegaRoute。
 
 ## 新的公共入口
 
+数据统一存放于相邻的 `../dataset/`，详见 [数据说明](../dataset/README.md)。`../dataset/test/case.json` 已登记现有 KiCad 测试板；旧 JSON 夹具迁移至 `../dataset/geometry-fixtures/`，程序目录不再保留 `data/`。
+
 ```powershell
 python tools/bench.py --help
 python tools/bench.py doctor --toolchain configs/kicad-toolchain.json
-python tools/bench.py plan --case path/to/case.json --backend freerouting --toolchain configs/kicad-toolchain.json
+python tools/bench.py plan --case ../dataset/test/case.json --backend freerouting --toolchain configs/kicad-toolchain.json
 ```
 
 正式案例以 `configs/case.example.json` 为模板：`.kicad_pcb` 必须配套同名 `.kicad_pro`，存在 `.kicad_dru` 时必须显式声明。锁文件暂定 KiCad 9.0.8；未检测到本机 KiCad，尚未完成真实外部评测验证。`plan` 输出每个后端的阶段和未实现项，不运行算法。安装 Python 包后也可使用 `pcb-bench` 命令。
@@ -40,8 +46,8 @@ MinGW 的运行时 DLL 所在目录需在 PATH 中。可视化/随机生成依�
 以下使用 Ninja 构建路径，MinGW Make 构建时将 `build/dev` 换成 `build/local`；Linux 使用无 `.exe` 后缀的入口。
 
 ```powershell
-build/dev/megaroute_cli.exe validate --board data/synthetic/two_net.json
-build/dev/megaroute_cli.exe route --board data/synthetic/two_net.json --config configs/baseline.json --out results/demo --events
+build/dev/megaroute_cli.exe validate --board ../dataset/geometry-fixtures/two_net.json
+build/dev/megaroute_cli.exe route --board ../dataset/geometry-fixtures/two_net.json --config configs/baseline.json --out results/demo --events
 build/dev/megaroute_cli.exe check --board results/demo/board.json --routes results/demo/routes.json
 python tools/visualize.py --board results/demo/board.json --routes results/demo/routes.json --metrics results/demo/metrics.json --out results/demo/layers.png
 ```
@@ -53,7 +59,7 @@ python tools/visualize.py --board results/demo/board.json --routes results/demo/
 ```powershell
 python tools/generate_cases.py --fixture multilayer --out results/multilayer.json
 python tools/generate_cases.py --nets 20 --layers 2 --size 50 --rho 0.1 --seed 0 --out results/random.json
-python tools/run_experiments.py --exe build/dev/megaroute_cli.exe --boards data/synthetic/two_net.json --configs configs/baseline.json configs/adaptive_strict.json --out results/batch --repeats 3
+python tools/run_experiments.py --exe build/dev/megaroute_cli.exe --boards ../dataset/geometry-fixtures/two_net.json --configs configs/baseline.json configs/adaptive_strict.json --out results/batch --repeats 3
 ```
 
 批量工具保存配置/输入/程序哈希、环境、逐次指标、路线哈希、错误与超时记录。大规模运行前应先做 profiling；当前全量几何检查偏重正确性，不适合直接执行论文规模性能比较。
