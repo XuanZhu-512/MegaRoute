@@ -27,6 +27,14 @@ def append_routes(p, board_path, out_path, routes, layers, expected_version):
     original_tracks = track_ids()
     copper = routes["copper"]
     added = []
+    seen_vias = set()
+    duplicates = 0
+    for existing in board.GetTracks():
+        if isinstance(existing, p.PCB_VIA):
+            pos = existing.GetPosition()
+            seen_vias.add((existing.GetNetCode(), pos.x, pos.y, existing.GetWidth(),
+                           existing.GetDrillValue(), existing.TopLayer(), existing.BottomLayer(),
+                           existing.GetViaType()))
     for item in copper:
         net = board.FindNet(item["net"])
         if net is None or net.GetNetCode() == 0:
@@ -42,6 +50,13 @@ def append_routes(p, board_path, out_path, routes, layers, expected_version):
             track.SetLayer(layer_of[item["layers"][0]])
             track.SetNet(net)
         elif kind == "via":
+            key = (net.GetNetCode(), p.FromMM(item["center"][0]), p.FromMM(item["center"][1]),
+                   p.FromMM(2 * item["radius"]), p.FromMM(item["drill"]),
+                   ordered[0]["kicad_id"], ordered[-1]["kicad_id"], p.VIATYPE_THROUGH)
+            if key in seen_vias:
+                duplicates += 1
+                continue
+            seen_vias.add(key)
             track = p.PCB_VIA(board)
             track.SetPosition(p.VECTOR2I(p.FromMM(item["center"][0]), p.FromMM(item["center"][1])))
             track.SetWidth(p.FromMM(2 * item["radius"]))
@@ -62,7 +77,7 @@ def append_routes(p, board_path, out_path, routes, layers, expected_version):
         raise RuntimeError("new route reused an existing UUID")
     board.Save(str(out_path))
     return {"added": len(added), "uuids": added, "original_tracks": len(original_tracks),
-            "original_pads": len(original_pads)}
+            "original_pads": len(original_pads), "duplicate_vias_skipped": duplicates}
 
 
 def main():

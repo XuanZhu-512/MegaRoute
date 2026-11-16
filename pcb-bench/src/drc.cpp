@@ -1,11 +1,13 @@
 #include "megaroute/core.hpp"
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <numeric>
 #include <set>
 #include <tuple>
 namespace mr {
-std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::vector<Shape> &copper) {
+std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::vector<Shape> &copper,
+                                 const CopperIndex *index) {
     std::vector<Violation> out;
     auto add = [&](std::string rule, std::string other, int z, double measured, double required, bool fixed) {
         out.push_back({rule, s.id, other, z, measured, required, fixed});
@@ -14,8 +16,10 @@ std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::ve
     for (auto p : s.polygon)
         contained = contained && inside(p, b.outline);
     double edge = boundary_gap(s, b.outline);
+    if (contained && edge <= eps)
+        contained = contained_in(s, b.outline);
     for (int z : s.layers) {
-        if (!contained || edge < b.edge_clearance - eps || edge <= eps)
+        if (!contained || edge < b.edge_clearance - eps)
             add("board_edge", "outline", z, edge, b.edge_clearance, s.fixed);
         if (s.kind == "segment" && 2 * s.radius < b.min_width - eps)
             add("min_width", "", z, 2 * s.radius, b.min_width, s.fixed);
@@ -35,7 +39,17 @@ std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::ve
                     add("keepout", k.id, z, d, 0, s.fixed);
             }
     }
-    for (const auto &o : copper) {
+    std::vector<size_t> nearby;
+    if (index) {
+        double margin = eps;
+        for (const auto &n : b.nets) margin = std::max(margin, n.clearance + eps);
+        nearby = index->query(s, margin);
+    } else {
+        nearby.resize(copper.size());
+        std::iota(nearby.begin(), nearby.end(), 0);
+    }
+    for (auto id : nearby) {
+        const auto &o = copper[id];
         if (o.id == s.id || (!s.net.empty() && s.net == o.net) || !share_layer(s, o))
             continue;
         double d = gap(s, o);
@@ -48,18 +62,133 @@ std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::ve
     }
     return out;
 }
+// One shared endpoint, oriented so the first vector arrives at the joint and the second leaves it.
+static int corner_vectors(const Shape &a, const Shape &b, Point &incoming, Point &outgoing) {
+    if (a.kind != "segment" || b.kind != "segment")
+        return 0;
+    int hits = 0;
+    auto take = [&](Point far_a, Point joint, Point far_b) {
+        if (distance(far_a, joint) <= eps || distance(joint, far_b) <= eps)
+            return;
+        if (hits == 0) {
+            incoming = joint - far_a;
+            outgoing = far_b - joint;
+        }
+        ++hits;
+    };
+    if (distance(a.b, b.a) <= eps)
+        take(a.a, a.b, b.b);
+    if (distance(a.a, b.b) <= eps)
+        take(a.b, a.a, b.a);
+    if (distance(a.b, b.b) <= eps)
+        take(a.a, a.b, b.a);
+    if (distance(a.a, b.a) <= eps)
+        take(a.b, a.a, b.b);
+    return hits;
+}
+static bool corner_cosine(const Shape &a, const Shape &b, double &cosine) {
+    if (a.net.empty() || a.net != b.net || !share_layer(a, b))
+        return false;
+    Point incoming, outgoing;
+    if (corner_vectors(a, b, incoming, outgoing) != 1)
+        return false;
+    double nu = norm(incoming), nv = norm(outgoing);
+    if (nu <= eps || nv <= eps)
+        return false;
+    double dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    double cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    // Same ray from the shared endpoint: the copper union is still one straight segment.
+    if (std::abs(cross) <= eps * nu * nv && dot < 0)
+        return false;
+    cosine = dot / (nu * nv);
+    return true;
+}
+bool interior_turn_ok(const Shape &a, const Shape &b) {
+    double cosine = 1;
+    if (!corner_cosine(a, b, cosine))
+        return true;
+    return cosine >= std::sqrt(2.) / 2 - 1e-8;
+}
+bool interior_turn_ok(const Shape &a, const Shape &b, const std::vector<Shape> &copper) {
+    if (interior_turn_ok(a, b))
+        return true;
+    // Traces meeting inside a pad or via are not one continuous planar bend.
+    for (Point p : {a.a, a.b})
+        if (distance(p, b.a) <= eps || distance(p, b.b) <= eps) {
+            Shape point;
+            point.a = point.b = p;
+            for (const auto &terminal : copper)
+                if (terminal.net == a.net && terminal.kind != "segment" &&
+                    share_layer(a, terminal) && share_layer(b, terminal) &&
+                    gap(point, terminal) <= eps)
+                    return true;
+        }
+    return false;
+}
+bool legal_extension(const Board &b, const std::vector<Shape> &added,
+                     const std::vector<Shape> &existing, const CopperIndex &index) {
+    CopperIndex extra(added);
+    for (const auto &s : added) {
+        if (!check_shape(b, s, existing, &index).empty() ||
+            !check_shape(b, s, added, &extra).empty()) return false;
+        for (auto id : index.query(s)) {
+            const auto &other = existing[id];
+            if (!interior_turn_ok(s, other, existing) && !interior_turn_ok(s, other, added)) return false;
+        }
+        for (auto id : extra.query(s)) {
+            const auto &other = added[id];
+            if (s.id != other.id && !interior_turn_ok(s, other, existing) &&
+                !interior_turn_ok(s, other, added)) return false;
+        }
+    }
+    return true;
+}
 std::vector<Violation> check_board(const Board &b, const std::vector<Shape> &added) {
     auto all = b.copper;
     all.insert(all.end(), added.begin(), added.end());
     std::vector<Violation> out;
     std::set<std::tuple<std::string, std::string, std::string, int>> seen;
+    CopperIndex index(all);
     for (const auto &s : all)
-        for (auto v : check_shape(b, s, all)) {
+        for (auto v : check_shape(b, s, all, &index)) {
             auto a = v.a, c = v.b;
             if (c < a)
                 std::swap(a, c);
             if (seen.emplace(v.rule, a, c, v.layer).second)
                 out.push_back(v);
+        }
+    for (size_t i = 0; i < all.size(); ++i)
+        for (size_t j : index.query(all[i])) {
+            if (j <= i) continue;
+            const auto &left = all[i];
+            const auto &right = all[j];
+            if (left.fixed && right.fixed)
+                continue;
+            if (interior_turn_ok(left, right, all))
+                continue;
+            double cosine = 1;
+            if (!corner_cosine(left, right, cosine) || cosine >= std::sqrt(2.) / 2 - 1e-8)
+                continue;
+            cosine = std::min(1., std::max(-1., cosine));
+            int layer = -1;
+            for (int z : left.layers)
+                if (std::find(right.layers.begin(), right.layers.end(), z) != right.layers.end()) {
+                    layer = z;
+                    break;
+                }
+            Violation vlt;
+            vlt.rule = "interior_angle";
+            vlt.a = left.id;
+            vlt.b = right.id;
+            vlt.layer = layer;
+            vlt.measured = 180 - std::acos(cosine) * 180 / 3.14159265358979323846;
+            vlt.required = 135;
+            vlt.fixed = false;
+            auto ia = vlt.a, ib = vlt.b;
+            if (ib < ia)
+                std::swap(ia, ib);
+            if (seen.emplace(vlt.rule, ia, ib, layer).second)
+                out.push_back(vlt);
         }
     return out;
 }
@@ -81,9 +210,10 @@ struct DSU {
 };
 static DSU components(const std::vector<Shape> &all) {
     DSU d(all.size());
+    CopperIndex index(all);
     for (size_t i = 0; i < all.size(); ++i)
-        for (size_t j = 0; j < i; ++j)
-            if (!all[i].net.empty() && all[i].net == all[j].net && share_layer(all[i], all[j]) &&
+        for (size_t j : index.query(all[i]))
+            if (j < i && !all[i].net.empty() && all[i].net == all[j].net && share_layer(all[i], all[j]) &&
                 gap(all[i], all[j]) <= eps)
                 d.join(i, j);
     return d;
@@ -174,14 +304,16 @@ static double wire_length(const std::vector<Shape> &shapes) {
     }
     return total;
 }
-Json evaluate(const Board &b, const std::vector<Shape> &added) {
+Json evaluate(const Board &b, const std::vector<Shape> &added,
+              const std::vector<Connection> *cached_requirements) {
     auto all = b.copper;
     all.insert(all.end(), added.begin(), added.end());
     auto d = components(all);
     std::map<std::string, size_t> ids;
     for (size_t i = 0; i < all.size(); ++i)
         ids[all[i].id] = i;
-    auto q = requirements(b);
+    auto computed = cached_requirements ? std::vector<Connection>{} : requirements(b);
+    const auto &q = cached_requirements ? *cached_requirements : computed;
     size_t routed = 0;
     Json missing = Json::array();
     std::map<std::string, bool> nets;
@@ -247,7 +379,7 @@ Json evaluate(const Board &b, const std::vector<Shape> &added) {
             {"epsilon_mm", eps},
             {"supported_rules",
              {"copper_short", "clearance", "min_width", "board_edge", "board_hole", "keepout", "annular_ring",
-              "through_via_span", "connectivity"}},
+              "through_via_span", "connectivity", "interior_angle"}},
             {"unsupported_features",
              {"blind_buried_vias", "polygon_pad_holes", "net_class_pair_rules",
               "differential_pairs", "length_matching", "manufacturing_drill_clearance", "full_angle_rules",

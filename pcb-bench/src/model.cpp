@@ -172,7 +172,8 @@ Board parse_board(const Json &j) {
 }
 Config parse_config(const Json &j) {
     fields(j, {"schema_version", "algorithm", "step_mm", "beta", "d_min_mm", "lambda_v", "time_limit_s",
-               "max_expanded_nodes", "max_records", "max_iterations", "penalty_L", "penalty_k", "penalty_mu"});
+               "max_expanded_nodes", "max_records", "max_iterations", "penalty_L", "penalty_k", "penalty_mu",
+               "history_weight", "history_cell_mm", "stagnation_rounds", "refinement_levels"});
     require(j.at("schema_version") == "1.0", "unknown config schema");
     Config c;
     c.algorithm = j.value("algorithm", c.algorithm);
@@ -190,10 +191,21 @@ Config parse_config(const Json &j) {
     set("penalty_L", c.penalty_L);
     set("penalty_k", c.penalty_k);
     set("penalty_mu", c.penalty_mu);
+    set("history_weight", c.history_weight);
+    set("history_cell_mm", c.history_cell);
+    for (auto item : {std::pair<const char *, int *>{"stagnation_rounds", &c.stagnation_rounds},
+                      {"refinement_levels", &c.refinement_levels}}) {
+        if (!j.contains(item.first)) continue;
+        require(j.at(item.first).is_number_integer(), "search control must be integer");
+        auto value = j.at(item.first).get<long long>();
+        require(value >= (std::string(item.first) == "refinement_levels" ? 0 : 1) &&
+                value <= (std::string(item.first) == "refinement_levels" ? 4 : 100), "search control out of range");
+        *item.second = static_cast<int>(value);
+    }
     if (j.contains("max_iterations")) {
         require(j.at("max_iterations").is_number_integer(), "max_iterations must be integer");
         auto v = j.at("max_iterations").get<long long>();
-        require(v >= 1 && v <= 20, "max_iterations must be 1..20");
+        require(v >= 1 && v <= 100, "max_iterations must be 1..100");
         c.max_iterations = static_cast<int>(v);
     }
     for (auto item : {std::pair<const char *, size_t *>{"max_expanded_nodes", &c.max_nodes},
@@ -207,6 +219,7 @@ Config parse_config(const Json &j) {
     require(c.step > eps && c.d_min >= 0 && c.beta >= 1 && c.lambda_v >= 0 && c.time_limit > 0,
             "invalid config range");
     require(c.penalty_L > 0 && c.penalty_k > 0 && c.penalty_mu > 0, "invalid logistic penalty");
+    require(c.history_weight >= 0 && c.history_cell > eps, "invalid congestion parameters");
     if (c.algorithm == "megaroute")
         logistic_penalty(1, c.penalty_L, c.penalty_k, c.penalty_mu);
     return c;
@@ -224,7 +237,11 @@ Json config_json(const Config &c) {
             {"max_iterations", c.max_iterations},
             {"penalty_L", c.penalty_L},
             {"penalty_k", c.penalty_k},
-            {"penalty_mu", c.penalty_mu}};
+            {"penalty_mu", c.penalty_mu},
+            {"history_weight", c.history_weight},
+            {"history_cell_mm", c.history_cell},
+            {"stagnation_rounds", c.stagnation_rounds},
+            {"refinement_levels", c.refinement_levels}};
 }
 Json routes_json(const std::vector<Shape> &ss) {
     Json arr = Json::array();

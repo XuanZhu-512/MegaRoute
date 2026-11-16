@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "algorithm": "megaroute",
+  "beta": 5,
+  "d_min_mm": 0.0254,
+  "lambda_v": 1,
+  "time_limit_s": 300,
+  "max_expanded_nodes": 1000000,
+  "max_records": 2000000,
+  "max_iterations": 20,
+  "penalty_L": 1000,
+  "penalty_k": 0.8,
+  "penalty_mu": 4,
+  "history_weight": 0.25,
+  "history_cell_mm": 1,
+  "stagnation_rounds": 3,
+  "refinement_levels": 2
+}

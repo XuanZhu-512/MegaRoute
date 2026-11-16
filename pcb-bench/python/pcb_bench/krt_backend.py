@@ -5,6 +5,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from .netclass import resolve_net_classes
+
 
 # Paper hyperparameters from PCBWorld methods/baselines/rule_based/run_rule_based_routers.py.
 KRT_PAPER_ARGS = (
@@ -28,10 +30,8 @@ DEFAULT_KRT_RUNNER = Path(
 
 
 def krt_arguments(board_in, board_out, geometry, rules) -> list[str]:
-    patterns = rules.get("net_settings", {}).get("netclass_patterns") or []
-    if patterns:
-        raise ValueError("unsupported_feature: netclass_patterns")
-    classes = {item["name"]: item for item in rules["net_settings"]["classes"]}
+    net_settings = rules.get("net_settings") or {}
+    classes = {item["name"]: item for item in net_settings.get("classes") or []}
     if "Default" not in classes:
         raise ValueError("project rules have no Default net class")
     default = classes["Default"]
@@ -44,10 +44,11 @@ def krt_arguments(board_in, board_out, geometry, rules) -> list[str]:
             "--via-size", str(default["via_diameter"]),
             "--via-drill", str(default["via_drill"]),
             *KRT_PAPER_ARGS]
-    assignments = rules.get("net_settings", {}).get("netclass_assignments") or {}
+    net_names = [net["name"] for net in geometry.get("nets", []) if net.get("code")]
+    resolved = resolve_net_classes(net_settings, net_names)
     names = []
     widths = []
-    for name, class_name in sorted(assignments.items()):
+    for name, class_name in sorted(resolved.items()):
         if class_name == "Default":
             continue
         if class_name not in classes:

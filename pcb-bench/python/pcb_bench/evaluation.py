@@ -183,6 +183,10 @@ class ExternalKiCadEvaluator:
         metrics = build_metrics(self.case_id, self.backend, before["pad_groups"], after["pad_groups"],
                                 before["copper"], after["copper"], before["pad_uuids"], after["pad_uuids"],
                                 drc_counts, self.route_time_s, proc.returncode)
+        metadata = {"schema_version": "1.0", "connectivity_policy": "direct_pad_contacts_v2",
+                    "metrics_worker_sha256": sha256(Path(__file__).with_name("kicad_metrics_worker.py")),
+                    "toolchain": fingerprint}
+        (workdir / "evaluator.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         (workdir / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")
         with (workdir / "metrics.csv").open("w", encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, METRIC_FIELDS)

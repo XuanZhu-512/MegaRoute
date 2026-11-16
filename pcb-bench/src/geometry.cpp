@@ -107,6 +107,37 @@ double boundary_gap(const Shape &a, const std::vector<Point> &poly) {
     }
     return d;
 }
+// Split at every outline intersection, including collinear vertices. Checking only
+// endpoints (or one midpoint) misses excursions through a concave board boundary.
+static bool segment_inside(Point a, Point b, const std::vector<Point> &poly) {
+    if (!inside(a, poly) || !inside(b, poly)) return false;
+    Point v = b - a;
+    double len2 = v.x * v.x + v.y * v.y;
+    if (len2 <= eps * eps) return true;
+    std::vector<double> cuts{0, 1};
+    for (size_t i = 0; i < poly.size(); ++i) {
+        Point c = poly[i], w = poly[(i + 1) % poly.size()] - c;
+        double den = cross(v, w);
+        if (std::abs(den) > 1e-12 * norm(v) * norm(w)) {
+            double t = cross(c - a, w) / den, u = cross(c - a, v) / den;
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1) cuts.push_back(t);
+        } else if (point_segment(c, a, b) <= eps) {
+            Point d = c - a;
+            cuts.push_back(std::clamp((d.x * v.x + d.y * v.y) / len2, 0., 1.));
+        }
+    }
+    std::sort(cuts.begin(), cuts.end());
+    for (size_t i = 1; i < cuts.size(); ++i)
+        if (!inside(a + v * ((cuts[i - 1] + cuts[i]) / 2), poly)) return false;
+    return true;
+}
+bool contained_in(const Shape &s, const std::vector<Point> &poly) {
+    if (s.polygon.empty())
+        return segment_inside(s.a, s.b, poly) && boundary_gap(s, poly) >= -eps;
+    for (size_t i = 0; i < s.polygon.size(); ++i)
+        if (!segment_inside(s.polygon[i], s.polygon[(i + 1) % s.polygon.size()], poly)) return false;
+    return true;
+}
 bool share_layer(const Shape &a, const Shape &b) {
     for (int z : a.layers)
         if (std::find(b.layers.begin(), b.layers.end(), z) != b.layers.end())

@@ -1,4 +1,5 @@
 #include "megaroute/core.hpp"
+#include "megaroute/build_identity.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -6,6 +7,10 @@
 int main(int argc, char **argv) {
     using namespace mr;
     try {
+        if (argc == 2 && std::string(argv[1]) == "--build-info") {
+            std::cout << Json({{"source_fingerprint", MR_SOURCE_FINGERPRINT}, {"type", MR_BUILD_TYPE}}).dump() << '\n';
+            return 0;
+        }
         if (argc < 2 || std::string(argv[1]) == "--help") {
             std::cout << "megaroute_cli validate --board board.json\nmegaroute_cli route --board board.json "
                          "--config config.json --out results/run [--events]\nmegaroute_cli check --board "
@@ -67,8 +72,18 @@ int main(int argc, char **argv) {
                 throw std::runtime_error("cannot create event log");
         }
         auto begin = std::chrono::steady_clock::now();
-        auto result = route(board, config,
-                            events ? Observer([&](const Json &e) { log << e.dump() << '\n'; }) : Observer{});
+        auto result = route(board, config, [&](const Json &e) {
+            if (e.at("event") == "checkpoint") {
+                auto path = out / "routes.checkpoint.json";
+                write_json(path.string(), {{"schema_version", "1.0"}, {"copper", e.at("copper")}});
+                std::filesystem::rename(path, out / "routes.json");
+                if (events) {
+                    auto metadata = e;
+                    metadata.erase("copper");
+                    log << metadata.dump() << '\n';
+                }
+            } else if (events) log << e.dump() << '\n';
+        });
         double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
         auto check_start = std::chrono::steady_clock::now();
         auto metrics = evaluate(board, result.copper);
@@ -91,13 +106,15 @@ int main(int argc, char **argv) {
             write_json((out / "diagnostic_routes.json").string(), routes_json(result.diagnostic));
         }
         metrics["implementation"] = "pcb-bench-0.1.0";
+        metrics["build"] = {{"source_fingerprint", MR_SOURCE_FINGERPRINT}, {"type", MR_BUILD_TYPE}};
         metrics["compiler"] =
 #ifdef __VERSION__
             __VERSION__;
 #else
             "MSVC";
 #endif
-        write_json((out / "routes.json").string(), routes_json(result.copper));
+        write_json((out / "routes.final.json").string(), routes_json(result.copper));
+        std::filesystem::rename(out / "routes.final.json", out / "routes.json");
         write_json((out / "metrics.json").string(), metrics);
         std::cout << metrics.dump(2) << '\n';
         return metrics["DRC"] == 0 && metrics["C_routed"] == metrics["C_total"] ? 0 : 2;

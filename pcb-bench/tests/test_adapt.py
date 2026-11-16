@@ -54,15 +54,43 @@ class AdaptTests(unittest.TestCase):
         self.assertFalse(smd["plated"])
         self.assertEqual(smd["points"][0], [6, 6])
 
-    def test_arc_and_patterns_are_rejected(self):
+    def test_rect_plated_pad_and_unconnected_copper(self):
+        data = geometry()
+        data["pads"][0]["copper"][0]["shape_code"] = 1
+        data["pads"][0]["copper"][1]["shape_code"] = 1
+        data["pads"].append({
+            "id": "mount", "net_name": "", "attribute": "plated_through_hole",
+            "position_mm": [1.5, 1.5],
+            "copper": [
+                {"layer": 0, "shape_code": 0, "size_mm": [1, 1],
+                 "polygons": [{"outer": [[1, 1], [2, 1], [2, 2], [1, 2]], "holes": []}]},
+                {"layer": 1, "shape_code": 0, "size_mm": [1, 1],
+                 "polygons": [{"outer": [[1, 1], [2, 1], [2, 2], [1, 2]], "holes": []}]}]})
+        board = adapt_geometry(data, rules())
+        plated = next(pad for pad in board["pads"] if pad["id"] == "pth")
+        self.assertEqual(plated["kind"], "polygon")
+        self.assertTrue(plated["plated"])
+        self.assertEqual(plated["layers"], [0, 1])
+        mount = next(item for item in board["fixed_copper"] if item["id"] == "mount")
+        self.assertEqual(mount["kind"], "polygon")
+        self.assertTrue(mount["plated"])
+        self.assertNotIn("net", mount)
+
+    def test_arc_rejected_and_patterns_resolved(self):
         data = geometry()
         data["tracks_and_vias"] = [{"id": "arc", "type": "PCB_ARC", "copper": []}]
         with self.assertRaises(ValueError):
             adapt_geometry(data, rules())
         patterned = rules()
-        patterned["net_settings"]["netclass_patterns"] = [{"pattern": "NET*"}]
-        with self.assertRaises(ValueError):
-            adapt_geometry(geometry(), patterned)
+        patterned["net_settings"]["netclass_patterns"] = [
+            {"pattern": "NET*", "netclass": "Default"},
+        ]
+        patterned["net_settings"]["classes"].append(
+            {"name": "Wide", "track_width": 0.5, "clearance": 0.4})
+        patterned["net_settings"]["netclass_patterns"].insert(
+            0, {"pattern": "NET1", "netclass": "Wide"})
+        board = adapt_geometry(geometry(), patterned)
+        self.assertEqual(board["nets"], [{"id": "NET1", "width": 0.5, "clearance": 0.4}])
 
 
 if __name__ == "__main__":

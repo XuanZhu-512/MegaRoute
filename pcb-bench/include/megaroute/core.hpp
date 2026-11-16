@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <map>
+#include <tuple>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -36,7 +38,41 @@ struct Shape {
 };
 double gap(const Shape &a, const Shape &b);
 double boundary_gap(const Shape &a, const std::vector<Point> &polygon);
+bool contained_in(const Shape &a, const std::vector<Point> &polygon);
 bool share_layer(const Shape &a, const Shape &b);
+struct Bounds {
+    double x0, y0, x1, y1;
+};
+Bounds bounds(const Shape &s);
+// Broad phase only: every returned object must still undergo exact geometry checks.
+// The vector object must outlive the index; appends require insert(new_index).
+class CopperIndex {
+    const std::vector<Shape> &objects_;
+    double cell_;
+    std::map<std::tuple<long long, long long, int>, std::vector<size_t>> cells_;
+    std::map<int, std::vector<size_t>> wide_, layers_;
+    std::vector<Bounds> bounds_;
+public:
+    explicit CopperIndex(const std::vector<Shape> &objects, double cell = 2.);
+    void insert(size_t id);
+    std::vector<size_t> query(const Shape &shape, double margin = eps) const;
+};
+// Append-only graph; reconstruct after a rip-up, then union only nearby new copper.
+class Connectivity {
+    std::vector<Shape> objects_;
+    CopperIndex index_;
+    std::vector<size_t> parents_;
+    std::map<std::string, size_t> ids_;
+    size_t root(size_t id);
+public:
+    explicit Connectivity(const std::vector<Shape> &copper);
+    Connectivity(const Connectivity &) = delete;
+    Connectivity &operator=(const Connectivity &) = delete;
+    void add(const Shape &shape);
+    bool connected(const std::string &a, const std::string &b);
+    const std::vector<Shape> &copper() const { return objects_; }
+    const CopperIndex &index() const { return index_; }
+};
 struct Net {
     std::string id;
     double width = .2, clearance = .2;
@@ -58,6 +94,8 @@ struct Config {
     double penalty_L = 200, penalty_k = .4, penalty_mu = 10;
     size_t max_nodes = 1000000, max_records = 2000000;
     int max_iterations = 20;
+    double history_weight = 1, history_cell = 1;
+    int stagnation_rounds = 3, refinement_levels = 2;
 };
 struct Violation {
     std::string rule, a, b;
@@ -88,11 +126,18 @@ Json config_json(const Config &c);
 Json read_json(const std::string &path);
 void write_json(const std::string &path, const Json &j);
 const Net &net(const Board &b, const std::string &id);
-std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::vector<Shape> &copper);
+std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::vector<Shape> &copper,
+                                 const CopperIndex *index = nullptr);
+bool legal_extension(const Board &b, const std::vector<Shape> &added,
+                     const std::vector<Shape> &existing, const CopperIndex &index);
 std::vector<Violation> check_board(const Board &b, const std::vector<Shape> &added);
+// Same-net segments that share one endpoint must keep an interior angle of at least 135 degrees.
+bool interior_turn_ok(const Shape &a, const Shape &b);
+bool interior_turn_ok(const Shape &a, const Shape &b, const std::vector<Shape> &copper);
 std::vector<Connection> requirements(const Board &b);
 bool connected(const Board &b, const std::vector<Shape> &added, const std::string &a, const std::string &c);
-Json evaluate(const Board &b, const std::vector<Shape> &added);
+Json evaluate(const Board &b, const std::vector<Shape> &added,
+              const std::vector<Connection> *cached_requirements = nullptr);
 struct Candidate {
     Point p;
     int layer;

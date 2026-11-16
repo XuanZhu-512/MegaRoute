@@ -65,9 +65,15 @@ class EvaluationTests(unittest.TestCase):
         self.assertIn("--via-size", args)
         self.assertEqual(args[args.index("--via-size") + 1], "1.2")
         self.assertEqual(tuple(args[args.index("--grid-step"):]), KRT_PAPER_ARGS)
-        rules["net_settings"]["netclass_patterns"] = [{"pattern": "*"}]
-        with self.assertRaises(ValueError):
-            krt_arguments("in.kicad_pcb", "out.kicad_pcb", geometry, rules)
+        geometry["nets"] = [{"code": 1, "name": "VCC"}, {"code": 2, "name": "SIG"}]
+        rules["net_settings"]["classes"].append(
+            {"name": "Power", "track_width": 0.5, "clearance": 0.3,
+             "via_diameter": 1.2, "via_drill": 0.6})
+        rules["net_settings"]["netclass_patterns"] = [{"pattern": "VCC", "netclass": "Power"}]
+        args = krt_arguments("in.kicad_pcb", "out.kicad_pcb", geometry, rules)
+        self.assertIn("--power-nets", args)
+        self.assertEqual(args[args.index("--power-nets") + 1], "VCC")
+        self.assertEqual(args[args.index("--power-nets-widths") + 1], "0.5")
 
 
 if __name__ == "__main__":

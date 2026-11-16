@@ -114,9 +114,14 @@ def export_geometry(p, board_path, expected_version, error_mm):
         all_graphics.extend(fp.GraphicalItems())
     for item in all_graphics:
         if any(item.IsOnLayer(z) for z in layers):
+            item_type = item.GetClass()
+            if item_type == "PCB_TEXT":
+                ignored.append({"uuid": item.m_Uuid.AsString(), "type": item_type,
+                                "reason": "copper_text_not_fixed_copper"})
+                continue
             if not isinstance(item, p.PCB_SHAPE):
-                raise ValueError(f"unsupported copper graphic: {item.GetClass()}")
-            graphics.append({"id": identity(item), "type": item.GetClass(), "copper": copper(item)})
+                raise ValueError(f"unsupported copper graphic: {item_type}")
+            graphics.append({"id": identity(item), "type": item_type, "copper": copper(item)})
         else:
             ignored.append({"uuid": item.m_Uuid.AsString(), "type": item.GetClass(),
                             "reason": "non_copper_graphic_preserved_in_source"})

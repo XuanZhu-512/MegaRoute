@@ -3,6 +3,8 @@ import json
 import math
 from pathlib import Path
 
+from .netclass import resolve_net_classes
+
 
 CIRCLE = 0
 THROUGH_VIA = 0
@@ -26,6 +28,19 @@ def _rings(polygons):
     return outer
 
 
+def _shared_outline(parts):
+    layers = [part["layer"] for part in parts]
+    if len(layers) != len(set(layers)):
+        raise ValueError("duplicate copper layer on pad")
+    radius = _circle_layers(parts)
+    if radius is not None:
+        return {"kind": "circle", "radius": radius, "layers": layers}
+    first = parts[0]["polygons"]
+    if any(part["polygons"] != first for part in parts):
+        raise ValueError("unsupported_feature: pad layers do not share one outline")
+    return {"kind": "polygon", "points": _rings(first), "layers": layers}
+
+
 def _circle_layers(parts):
     sizes = []
     for part in parts:
@@ -40,8 +55,8 @@ def _circle_layers(parts):
     return sizes[0] / 2
 
 
-def _class_for(name, classes, assignments):
-    chosen = assignments.get(name, "Default")
+def _class_for(name, classes, resolved):
+    chosen = resolved.get(name, "Default")
     if chosen not in classes:
         raise ValueError(f"unknown net class for {name}: {chosen}")
     return classes[chosen]
@@ -60,14 +75,13 @@ def _via_radius(center, item):
 def adapt_geometry(geometry, rules):
     if geometry.get("schema_version") != "kicad-geometry-1.0" or geometry.get("units") != "mm":
         raise ValueError("expected kicad-geometry-1.0 in mm")
-    patterns = rules.get("net_settings", {}).get("netclass_patterns") or []
-    if patterns:
-        raise ValueError("unsupported_feature: netclass_patterns")
     design = rules["board"]["design_settings"]["rules"]
-    classes = {item["name"]: item for item in rules["net_settings"]["classes"]}
+    net_settings = rules.get("net_settings") or {}
+    classes = {item["name"]: item for item in net_settings.get("classes") or []}
     if "Default" not in classes:
         raise ValueError("project rules have no Default net class")
-    assignments = rules.get("net_settings", {}).get("netclass_assignments") or {}
+    net_names = [net["name"] for net in geometry["nets"] if net.get("code")]
+    resolved = resolve_net_classes(net_settings, net_names)
     outlines = geometry["outline"]
     if len(outlines) != 1:
         raise ValueError("unsupported_feature: multiple board outlines")
@@ -84,36 +98,47 @@ def adapt_geometry(geometry, rules):
             continue
         if not net["name"]:
             raise ValueError("unnamed electrical net")
-        rule = _class_for(net["name"], classes, assignments)
+        rule = _class_for(net["name"], classes, resolved)
         nets.append({"id": net["name"], "width": rule["track_width"], "clearance": rule["clearance"]})
     known = {net["id"] for net in nets}
     pads = []
+    fixed = []
     for pad in geometry["pads"]:
-        if pad.get("attribute") == "plated_through_hole":
+        attribute = pad.get("attribute")
+        if attribute == "plated_through_hole":
             plated = True
-        elif pad.get("attribute") == "smd":
+        elif attribute in ("smd", "non_plated_hole"):
             plated = False
         else:
-            raise ValueError(f"unsupported_feature: pad attribute {pad.get('attribute')}")
-        if pad.get("net_name") not in known:
-            raise ValueError(f"pad {pad['id']} has no electrical net")
+            raise ValueError(f"unsupported_feature: pad attribute {attribute}")
         copper = pad["copper"]
         if not copper:
             raise ValueError(f"pad {pad['id']} has no copper")
-        layers = [part["layer"] for part in copper]
-        if len(layers) != len(set(layers)):
-            raise ValueError(f"duplicate copper layer on pad {pad['id']}")
         center = _point(pad["position_mm"])
-        radius = _circle_layers(copper)
-        record = {"id": pad["id"], "net": pad["net_name"], "center": center, "layers": layers, "plated": plated}
-        if radius is not None:
-            record.update(kind="circle", radius=radius)
-        elif len(copper) == 1:
-            record.update(kind="polygon", points=_rings(copper[0]["polygons"]))
-        else:
-            raise ValueError("unsupported_feature: plated pad layers do not share one circle")
+        shape = _shared_outline(copper)
+        net_name = pad.get("net_name") or ""
+        obstacle = attribute == "non_plated_hole" or net_name not in known
+        if obstacle and net_name:
+            raise ValueError(f"pad {pad['id']} has no electrical net")
+        if shape["kind"] == "circle" and obstacle:
+            shape = {"kind": "polygon", "points": _rings(copper[0]["polygons"]), "layers": shape["layers"]}
+        record = {"id": pad["id"], "center": center, "layers": shape["layers"], **{
+            key: shape[key] for key in ("kind", "radius", "points") if key in shape}}
+        if obstacle:
+            if plated and len(shape["layers"]) > 1:
+                record["plated"] = True
+                fixed.append(record)
+            elif len(shape["layers"]) == 1:
+                fixed.append(record)
+            else:
+                for layer in shape["layers"]:
+                    piece = dict(record)
+                    piece["id"] = f"{pad['id']}:L{layer}"
+                    piece["layers"] = [layer]
+                    fixed.append(piece)
+            continue
+        record.update(net=net_name, plated=plated)
         pads.append(record)
-    fixed = []
     for item in geometry["tracks_and_vias"]:
         kind = item.get("type")
         if kind == "PCB_ARC":

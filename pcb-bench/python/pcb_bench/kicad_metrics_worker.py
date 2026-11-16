@@ -36,8 +36,10 @@ def board_stats(p, board_path, expected_version):
             visited.add(uid)
             for track in connectivity.GetConnectedTracks(item):
                 pending.append(track)
-            if not isinstance(item, p.PAD):
-                for other in connectivity.GetConnectedPads(item):
+            # Pads can touch other pads directly without an intervening track.
+            # The old PAD guard split those components and inflated the baseline.
+            for other in connectivity.GetConnectedPads(item):
+                if other.GetNetCode() == pad.GetNetCode():
                     pending.append(other)
     copper = []
     for item in board.GetTracks():

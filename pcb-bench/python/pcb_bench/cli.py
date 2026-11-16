@@ -43,7 +43,7 @@ def main(argv=None):
     write.add_argument("--out", type=Path, required=True)
     write.add_argument("--kicad-python", required=True)
     write.add_argument("--expected-version", required=True)
-    run = sub.add_parser("run", help="route one case with megaroute or krt and write HTML plus evaluation")
+    run = sub.add_parser("run", help="route one case with megaroute, krt, or freerouting and write HTML plus evaluation")
     run.add_argument("--case", type=Path, required=True)
     run.add_argument("--backend", choices=list(BACKENDS), required=True)
     run.add_argument("--out", type=Path, required=True)
@@ -53,6 +53,8 @@ def main(argv=None):
     run.add_argument("--router", type=Path)
     run.add_argument("--config", type=Path)
     run.add_argument("--krt-root", type=Path)
+    run.add_argument("--freerouting-jar", type=Path)
+    run.add_argument("--max-passes", type=int, default=10)
     run.add_argument("--routing-seconds", type=float, default=300)
     run.add_argument("--evaluation-seconds", type=float, default=120)
     args = parser.parse_args(argv)
@@ -79,7 +81,8 @@ def main(argv=None):
         elif args.command == "run":
             result = execute_run(args.case, args.backend, args.out, args.toolchain, args.kicad_python,
                                  args.expected_version, router=args.router, config=args.config,
-                                 krt_root=args.krt_root, routing_seconds=args.routing_seconds,
+                                 krt_root=args.krt_root, freerouting_jar=args.freerouting_jar,
+                                 max_passes=args.max_passes, routing_seconds=args.routing_seconds,
                                  evaluation_seconds=args.evaluation_seconds)
         elif args.command == "doctor":
             result = KiCadToolchain.load(args.toolchain).probe()

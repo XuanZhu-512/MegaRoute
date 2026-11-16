@@ -38,7 +38,10 @@ class KiCadGeometryConverter:
                                    '--max-error-mm', str(self.max_error_mm)],
                                   capture_output=True, text=True, timeout=120, env=self.env)
             if proc.returncode:
-                raise RuntimeError(f"KiCad geometry export failed: {proc.stderr.strip()}")
+                detail = proc.stderr.strip() or proc.stdout.strip()
+                if not detail:
+                    detail = f"worker exited {proc.returncode} with no message (pcbnew often segfaults if this Python is not the one KiCad was built against)"
+                raise RuntimeError(f"KiCad geometry export failed: {detail}")
             if fingerprints(case) != initial or fingerprints(source) != initial:
                 raise RuntimeError("source files changed during export")
             project = json.loads(source.project.read_text(encoding='utf-8'))

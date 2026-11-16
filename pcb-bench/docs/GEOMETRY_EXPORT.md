@@ -34,7 +34,7 @@ python tools/bench.py export-geometry --case ../dataset/test/case.json --out res
 - 焊盘保存镀通属性、钻孔尺寸/形状代码/位置、网络、封装与焊盘 UUID。
   铜多边形是外部铜包络，钻孔信息单独表示，不能把孔内区域误当实体铜。
 - 当前支持普通/自定义焊盘的 KiCad 铜轮廓、直线/圆弧走线、过孔和铜层
-  PCB_SHAPE 图形；不支持的铜图形、铺铜和规则区域明确拒绝，不静默省略。
+  PCB_SHAPE 图形；铜层 `PCB_TEXT` 不入障碍几何（记入 `ignored_non_copper_graphics`）；其它不支持的铜图形、铺铜和规则区域明确拒绝，不静默省略。
 - 非铜绘图不进入障碍几何，在报告中列出且保留于源文件；完整规则、热连接、
   铺铜填充策略和制造约束尚未解析。导出不代表 DRC 或布线成功。
 
