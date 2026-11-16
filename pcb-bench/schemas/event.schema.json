@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pcb-bench event v1.0",
+  "type": "object",
+  "properties": {
+    "event": {
+      "enum": [
+        "search_start",
+        "search_failed",
+        "route_committed"
+      ]
+    },
+    "net": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "event",
+    "net"
+  ]
+}

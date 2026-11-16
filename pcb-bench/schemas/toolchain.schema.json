@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KiCad toolchain version lock v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kicad_cli", "exact_version"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "kicad_cli": {"type": "string", "minLength": 1},
+    "exact_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+  }
+}

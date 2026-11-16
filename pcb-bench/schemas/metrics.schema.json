@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pcb-bench metrics v1.0",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "C_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "C_routed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "DRC": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "completed_with_violations",
+        "partial_with_violations"
+      ]
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "C_total",
+    "C_routed",
+    "DRC",
+    "status",
+    "violations"
+  ]
+}

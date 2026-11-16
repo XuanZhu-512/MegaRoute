@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pcb-bench config v1.0",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "algorithm": {
+      "enum": [
+        "baseline_fixed_strict",
+        "adaptive_strict"
+      ]
+    },
+    "step_mm": {
+      "type": "number",
+      "exclusiveMinimum": 1e-06
+    },
+    "beta": {
+      "type": "number",
+      "minimum": 1
+    },
+    "d_min_mm": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000.0
+    },
+    "lambda_v": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000000.0
+    },
+    "time_limit_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000000.0
+    },
+    "max_expanded_nodes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000000
+    },
+    "max_records": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000000
+    }
+  },
+  "required": [
+    "schema_version"
+  ],
+  "additionalProperties": false
+}

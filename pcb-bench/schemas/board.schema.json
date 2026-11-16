@@ -1,0 +1,405 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pcb-bench board v1.0",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "units": {
+      "const": "mm"
+    },
+    "layers": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32
+    },
+    "outline": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "number",
+          "minimum": -1000000.0,
+          "maximum": 1000000.0
+        },
+        "minItems": 2,
+        "maxItems": 2
+      },
+      "minItems": 3
+    },
+    "holes": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": -1000000.0,
+            "maximum": 1000000.0
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "minItems": 3
+      }
+    },
+    "nets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000.0
+          },
+          "clearance": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000.0
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "pads": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "net": {
+                "type": "string"
+              },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 31
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "kind": {
+                "const": "circle"
+              },
+              "center": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1000000.0,
+                  "maximum": 1000000.0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "radius": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000.0
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "center",
+              "radius",
+              "layers"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "net": {
+                "type": "string"
+              },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 31
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "kind": {
+                "const": "polygon"
+              },
+              "center": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1000000.0,
+                  "maximum": 1000000.0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": -1000000.0,
+                    "maximum": 1000000.0
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "minItems": 3
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "center",
+              "points",
+              "layers"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "fixed_copper": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "net": {
+                "type": "string"
+              },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 31
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "kind": {
+                "const": "segment"
+              },
+              "a": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1000000.0,
+                  "maximum": 1000000.0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "b": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1000000.0,
+                  "maximum": 1000000.0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "width": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000.0
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "a",
+              "b",
+              "width",
+              "layers"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "net": {
+                "type": "string"
+              },
+              "layers": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 31
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "kind": {
+                "const": "via"
+              },
+              "center": {
+                "type": "array",
+                "items": {
+                  "type": "number",
+                  "minimum": -1000000.0,
+                  "maximum": 1000000.0
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "radius": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000.0
+              },
+              "drill": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000.0
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "center",
+              "radius",
+              "drill",
+              "layers"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "keepouts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": -1000000.0,
+                "maximum": 1000000.0
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "minItems": 3
+          },
+          "layers": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 31
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "points",
+          "layers"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "min_width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000.0
+        },
+        "clearance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000.0
+        },
+        "edge_clearance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000.0
+        },
+        "via_diameter": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000.0
+        },
+        "via_drill": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000000.0
+        },
+        "min_annular": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1000000.0
+        }
+      },
+      "required": [
+        "min_width",
+        "clearance",
+        "edge_clearance",
+        "via_diameter",
+        "via_drill",
+        "min_annular"
+      ],
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "units",
+    "layers",
+    "outline",
+    "nets",
+    "rules"
+  ],
+  "additionalProperties": false
+}

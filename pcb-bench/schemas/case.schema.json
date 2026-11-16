@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KiCad benchmark case manifest v1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "board", "project", "copper_policy"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "case_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+$"},
+    "board": {"type": "string", "pattern": "\\.kicad_pcb$"},
+    "project": {"type": "string", "pattern": "\\.kicad_pro$"},
+    "custom_rules": {"type": "string", "pattern": "\\.kicad_dru$"},
+    "copper_policy": {"const": "preserve_input"}
+  }
+}

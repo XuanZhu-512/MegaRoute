@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "algorithm": "baseline_fixed_strict",
+  "step_mm": 0.0254,
+  "d_min_mm": 0.0254,
+  "lambda_v": 1,
+  "time_limit_s": 60,
+  "max_expanded_nodes": 1000000,
+  "max_records": 2000000
+}
