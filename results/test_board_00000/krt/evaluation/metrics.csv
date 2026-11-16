@@ -1,0 +1,2 @@
+case_id,backend,success,routability,connections_required,connections_made,track_count,via_count,wirelength_mm,fixed_wirelength_mm,drv_error_count,drv_warning_count,unconnected_item_count,clean_pass,invalid_output,route_time_s,drc_exit_code
+test_board_00000,krt,True,1.0,5,5,25,8,276.96134905855956,0,0,21,0,True,False,0.9974932660006743,5

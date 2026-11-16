@@ -1,0 +1,203 @@
+{
+  "schema_version": "1.0",
+  "objects": {
+    "9e941e19-d48a-4645-acd0-263a60e8171f": {
+      "kicad_uuid": "9e941e19-d48a-4645-acd0-263a60e8171f",
+      "type": "PAD"
+    },
+    "cb34dccb-f958-4bb1-a451-8053a4ea5ea2": {
+      "kicad_uuid": "cb34dccb-f958-4bb1-a451-8053a4ea5ea2",
+      "type": "PAD"
+    },
+    "980a4f59-6168-483f-b29d-f9732d6ce93c": {
+      "kicad_uuid": "980a4f59-6168-483f-b29d-f9732d6ce93c",
+      "type": "PAD"
+    },
+    "b5964a6b-3df9-4ba7-ad7a-5989d777135b": {
+      "kicad_uuid": "b5964a6b-3df9-4ba7-ad7a-5989d777135b",
+      "type": "PAD"
+    },
+    "51a42f41-4ecd-4e56-8312-82b26a3f9afc": {
+      "kicad_uuid": "51a42f41-4ecd-4e56-8312-82b26a3f9afc",
+      "type": "PAD"
+    },
+    "26294705-c104-44b9-80d0-42fbee37d552": {
+      "kicad_uuid": "26294705-c104-44b9-80d0-42fbee37d552",
+      "type": "PAD"
+    },
+    "71aed548-9e3e-4e54-b162-3dd19e2688da": {
+      "kicad_uuid": "71aed548-9e3e-4e54-b162-3dd19e2688da",
+      "type": "PAD"
+    },
+    "12c4f870-b79a-4732-b1e8-10c011349aeb": {
+      "kicad_uuid": "12c4f870-b79a-4732-b1e8-10c011349aeb",
+      "type": "PAD"
+    },
+    "ebc779f9-b282-4467-a0d7-92f2d90e131b": {
+      "kicad_uuid": "ebc779f9-b282-4467-a0d7-92f2d90e131b",
+      "type": "PAD"
+    },
+    "03a4ca09-1883-446b-bbec-8d5f2ea04f35": {
+      "kicad_uuid": "03a4ca09-1883-446b-bbec-8d5f2ea04f35",
+      "type": "PCB_TRACK"
+    },
+    "187f43f2-21b0-4052-9fc2-8eded0d8be0c": {
+      "kicad_uuid": "187f43f2-21b0-4052-9fc2-8eded0d8be0c",
+      "type": "PCB_TRACK"
+    },
+    "31a85dd0-f0dc-4bc2-ab31-4094617543a6": {
+      "kicad_uuid": "31a85dd0-f0dc-4bc2-ab31-4094617543a6",
+      "type": "PCB_TRACK"
+    },
+    "32e42fc6-8f45-42d6-b259-085c7962d53f": {
+      "kicad_uuid": "32e42fc6-8f45-42d6-b259-085c7962d53f",
+      "type": "PCB_TRACK"
+    },
+    "3738b7e6-bf1a-4a4f-9c13-26cefcb1a69d": {
+      "kicad_uuid": "3738b7e6-bf1a-4a4f-9c13-26cefcb1a69d",
+      "type": "PCB_TRACK"
+    },
+    "42674239-40a3-4d23-a45b-6b0a2f6c77d9": {
+      "kicad_uuid": "42674239-40a3-4d23-a45b-6b0a2f6c77d9",
+      "type": "PCB_TRACK"
+    },
+    "f73f4e21-d8b4-4042-bf01-0de13b762007": {
+      "kicad_uuid": "f73f4e21-d8b4-4042-bf01-0de13b762007",
+      "type": "PCB_TRACK"
+    },
+    "020cdca2-cc65-479e-a0a2-8137a45eae04": {
+      "kicad_uuid": "020cdca2-cc65-479e-a0a2-8137a45eae04",
+      "type": "PCB_TRACK"
+    },
+    "5f563f12-ac0a-4c51-92bf-15a8bd75fd2c": {
+      "kicad_uuid": "5f563f12-ac0a-4c51-92bf-15a8bd75fd2c",
+      "type": "PCB_TRACK"
+    },
+    "90389eee-345c-4666-a070-df8bb1b649be": {
+      "kicad_uuid": "90389eee-345c-4666-a070-df8bb1b649be",
+      "type": "PCB_TRACK"
+    },
+    "a5d93134-575c-4a5a-aacf-59e12b7bbc5c": {
+      "kicad_uuid": "a5d93134-575c-4a5a-aacf-59e12b7bbc5c",
+      "type": "PCB_TRACK"
+    },
+    "1b7596c7-83f4-4723-a536-e93e3665f3c3": {
+      "kicad_uuid": "1b7596c7-83f4-4723-a536-e93e3665f3c3",
+      "type": "PCB_VIA"
+    },
+    "17ee4b26-45f6-4049-bdf5-6b06d8755bf9": {
+      "kicad_uuid": "17ee4b26-45f6-4049-bdf5-6b06d8755bf9",
+      "type": "PCB_TRACK"
+    },
+    "1ab9730a-bc24-45d4-8e5c-359acb54aeb9": {
+      "kicad_uuid": "1ab9730a-bc24-45d4-8e5c-359acb54aeb9",
+      "type": "PCB_TRACK"
+    },
+    "260c5e39-9e0a-45b8-b88b-68460ee03e59": {
+      "kicad_uuid": "260c5e39-9e0a-45b8-b88b-68460ee03e59",
+      "type": "PCB_TRACK"
+    },
+    "40dec19e-1685-4709-b5d2-93db153dd880": {
+      "kicad_uuid": "40dec19e-1685-4709-b5d2-93db153dd880",
+      "type": "PCB_TRACK"
+    },
+    "a797f8da-7fee-4bde-a5b4-b882b24606dc": {
+      "kicad_uuid": "a797f8da-7fee-4bde-a5b4-b882b24606dc",
+      "type": "PCB_TRACK"
+    },
+    "da8278f4-c345-4967-8dc3-cbdc65c04bb6": {
+      "kicad_uuid": "da8278f4-c345-4967-8dc3-cbdc65c04bb6",
+      "type": "PCB_TRACK"
+    },
+    "281e15b9-0cb6-4748-8265-dd84fbf33f88": {
+      "kicad_uuid": "281e15b9-0cb6-4748-8265-dd84fbf33f88",
+      "type": "PCB_TRACK"
+    },
+    "33e14458-5f0d-4636-9816-564973bb1a9c": {
+      "kicad_uuid": "33e14458-5f0d-4636-9816-564973bb1a9c",
+      "type": "PCB_TRACK"
+    },
+    "630141ce-067e-474e-84b2-42738d0b3530": {
+      "kicad_uuid": "630141ce-067e-474e-84b2-42738d0b3530",
+      "type": "PCB_TRACK"
+    },
+    "6c074dce-7661-4979-8e4b-b1250d4dcf15": {
+      "kicad_uuid": "6c074dce-7661-4979-8e4b-b1250d4dcf15",
+      "type": "PCB_TRACK"
+    },
+    "6f7b5514-6b6e-4e5c-8625-7f913e54070b": {
+      "kicad_uuid": "6f7b5514-6b6e-4e5c-8625-7f913e54070b",
+      "type": "PCB_TRACK"
+    },
+    "831cdcbb-2de3-40ff-8efc-0be7c51b9604": {
+      "kicad_uuid": "831cdcbb-2de3-40ff-8efc-0be7c51b9604",
+      "type": "PCB_TRACK"
+    },
+    "9d17260c-3da8-4b43-a092-17a4a67aace7": {
+      "kicad_uuid": "9d17260c-3da8-4b43-a092-17a4a67aace7",
+      "type": "PCB_TRACK"
+    },
+    "b2ac2b40-af13-4f6b-9812-d6c252a7aabc": {
+      "kicad_uuid": "b2ac2b40-af13-4f6b-9812-d6c252a7aabc",
+      "type": "PCB_TRACK"
+    },
+    "cfc39702-54ae-4b87-9e93-e86752979e37": {
+      "kicad_uuid": "cfc39702-54ae-4b87-9e93-e86752979e37",
+      "type": "PCB_TRACK"
+    },
+    "6edf8c70-a0af-447b-bd42-c8e0782eb627": {
+      "kicad_uuid": "6edf8c70-a0af-447b-bd42-c8e0782eb627",
+      "type": "PCB_TRACK"
+    },
+    "d52ce986-2ca1-4f46-8a82-e9ff0b7b6187": {
+      "kicad_uuid": "d52ce986-2ca1-4f46-8a82-e9ff0b7b6187",
+      "type": "PCB_TRACK"
+    },
+    "00c7ed34-8a2c-48ac-a08b-8364042ecbf0": {
+      "kicad_uuid": "00c7ed34-8a2c-48ac-a08b-8364042ecbf0",
+      "type": "PCB_VIA"
+    },
+    "30a80089-c67e-4b79-8c7b-4094b3d1cb24": {
+      "kicad_uuid": "30a80089-c67e-4b79-8c7b-4094b3d1cb24",
+      "type": "PCB_TRACK"
+    },
+    "690864f1-592b-43f6-9572-001c6e57e46d": {
+      "kicad_uuid": "690864f1-592b-43f6-9572-001c6e57e46d",
+      "type": "PCB_TRACK"
+    }
+  },
+  "layers": [
+    {
+      "index": 0,
+      "kicad_id": 0,
+      "name": "F.Cu"
+    },
+    {
+      "index": 1,
+      "kicad_id": 2,
+      "name": "B.Cu"
+    }
+  ],
+  "nets": [
+    {
+      "code": 0,
+      "name": ""
+    },
+    {
+      "code": 1,
+      "name": "NET1"
+    },
+    {
+      "code": 2,
+      "name": "NET2"
+    },
+    {
+      "code": 3,
+      "name": "NET3"
+    },
+    {
+      "code": 4,
+      "name": "NET4"
+    }
+  ]
+}

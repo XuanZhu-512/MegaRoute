@@ -1,0 +1,19 @@
+{
+  "case_id": "test_board_00000",
+  "backend": "krt",
+  "success": true,
+  "routability": 1.0,
+  "connections_required": 5,
+  "connections_made": 5,
+  "track_count": 25,
+  "via_count": 8,
+  "wirelength_mm": 276.96134905855956,
+  "fixed_wirelength_mm": 0,
+  "drv_error_count": 0,
+  "drv_warning_count": 21,
+  "unconnected_item_count": 0,
+  "clean_pass": true,
+  "invalid_output": false,
+  "route_time_s": 0.9974932660006743,
+  "drc_exit_code": 5
+}

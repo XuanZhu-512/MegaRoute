@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "objects": {
+    "cb34dccb-f958-4bb1-a451-8053a4ea5ea2": {
+      "kicad_uuid": "cb34dccb-f958-4bb1-a451-8053a4ea5ea2",
+      "type": "PAD"
+    },
+    "b5964a6b-3df9-4ba7-ad7a-5989d777135b": {
+      "kicad_uuid": "b5964a6b-3df9-4ba7-ad7a-5989d777135b",
+      "type": "PAD"
+    },
+    "980a4f59-6168-483f-b29d-f9732d6ce93c": {
+      "kicad_uuid": "980a4f59-6168-483f-b29d-f9732d6ce93c",
+      "type": "PAD"
+    },
+    "ebc779f9-b282-4467-a0d7-92f2d90e131b": {
+      "kicad_uuid": "ebc779f9-b282-4467-a0d7-92f2d90e131b",
+      "type": "PAD"
+    },
+    "71aed548-9e3e-4e54-b162-3dd19e2688da": {
+      "kicad_uuid": "71aed548-9e3e-4e54-b162-3dd19e2688da",
+      "type": "PAD"
+    },
+    "51a42f41-4ecd-4e56-8312-82b26a3f9afc": {
+      "kicad_uuid": "51a42f41-4ecd-4e56-8312-82b26a3f9afc",
+      "type": "PAD"
+    },
+    "26294705-c104-44b9-80d0-42fbee37d552": {
+      "kicad_uuid": "26294705-c104-44b9-80d0-42fbee37d552",
+      "type": "PAD"
+    },
+    "9e941e19-d48a-4645-acd0-263a60e8171f": {
+      "kicad_uuid": "9e941e19-d48a-4645-acd0-263a60e8171f",
+      "type": "PAD"
+    },
+    "12c4f870-b79a-4732-b1e8-10c011349aeb": {
+      "kicad_uuid": "12c4f870-b79a-4732-b1e8-10c011349aeb",
+      "type": "PAD"
+    }
+  },
+  "layers": [
+    {
+      "index": 0,
+      "kicad_id": 0,
+      "name": "F.Cu"
+    },
+    {
+      "index": 1,
+      "kicad_id": 2,
+      "name": "B.Cu"
+    }
+  ],
+  "nets": [
+    {
+      "code": 0,
+      "name": ""
+    },
+    {
+      "code": 1,
+      "name": "NET1"
+    },
+    {
+      "code": 2,
+      "name": "NET2"
+    },
+    {
+      "code": 3,
+      "name": "NET3"
+    },
+    {
+      "code": 4,
+      "name": "NET4"
+    }
+  ]
+}

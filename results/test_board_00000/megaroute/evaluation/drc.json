@@ -1,0 +1,331 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-11-16T15:45:09+0800",
+    "included_severities": [
+        "error",
+        "warning",
+        "exclusion"
+    ],
+    "kicad_version": "9.0.8",
+    "schematic_parity": [],
+    "source": "board_00000.kicad_pcb",
+    "unconnected_items": [],
+    "violations": [
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P4_1",
+                    "pos": {
+                        "x": 67.5,
+                        "y": 44.7
+                    },
+                    "uuid": "6f6aad69-7402-42f5-9729-21edb65bf5e4"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P1_1",
+                    "pos": {
+                        "x": 51.3,
+                        "y": 29.1
+                    },
+                    "uuid": "7fcb5e7f-4d95-466c-8b34-9ca08740a78e"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P2_1",
+                    "pos": {
+                        "x": 84.9,
+                        "y": 69.3
+                    },
+                    "uuid": "c3ab79de-1691-4fa2-a375-53da96e7f03d"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P1_2",
+                    "pos": {
+                        "x": 10.5,
+                        "y": 10.5
+                    },
+                    "uuid": "383ac827-525f-4738-aaa3-35b8c279d70f"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P3_1",
+                    "pos": {
+                        "x": 44.1,
+                        "y": 99.9
+                    },
+                    "uuid": "535ac28d-a455-42e0-a3b4-b302de5345c3"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P3_2",
+                    "pos": {
+                        "x": 93.9,
+                        "y": 27.9
+                    },
+                    "uuid": "9012c48b-36eb-447e-968a-faa688fd3014"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P2_3",
+                    "pos": {
+                        "x": 74.7,
+                        "y": 39.3
+                    },
+                    "uuid": "c64809fa-4ce2-4699-835f-340b867d1824"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P4_2",
+                    "pos": {
+                        "x": 72.3,
+                        "y": 104.7
+                    },
+                    "uuid": "c71fe9e7-8c73-45fb-80c1-0fdf4337aafb"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "The current configuration does not include the footprint library 'SamplePad'.",
+            "items": [
+                {
+                    "description": "Footprint P2_2",
+                    "pos": {
+                        "x": 78.9,
+                        "y": 10.5
+                    },
+                    "uuid": "d11e57a9-0555-470d-92d9-67cac2bb36c0"
+                }
+            ],
+            "severity": "warning",
+            "type": "lib_footprint_issues"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P4_1",
+                    "pos": {
+                        "x": 67.5,
+                        "y": 43.7
+                    },
+                    "uuid": "14a9bbdc-db36-438b-a724-4839c8a9030f"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P1_1",
+                    "pos": {
+                        "x": 51.3,
+                        "y": 28.1
+                    },
+                    "uuid": "eb1963a2-f1fa-4c23-87e8-206e3457e3fd"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P2_1",
+                    "pos": {
+                        "x": 84.9,
+                        "y": 68.3
+                    },
+                    "uuid": "8372195f-f91b-4bd1-ab1e-43e3da9f220d"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P1_2",
+                    "pos": {
+                        "x": 10.5,
+                        "y": 9.5
+                    },
+                    "uuid": "8951e426-1a1d-4a24-86fb-2ad0c6af8ee9"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P3_1",
+                    "pos": {
+                        "x": 44.1,
+                        "y": 98.9
+                    },
+                    "uuid": "438134e6-ce5c-4f87-b5f6-b0e7fa19e02d"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P3_2",
+                    "pos": {
+                        "x": 93.9,
+                        "y": 26.9
+                    },
+                    "uuid": "af79d2f8-c693-4cc8-bf53-7d3bfe040cc5"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P2_3",
+                    "pos": {
+                        "x": 74.7,
+                        "y": 38.3
+                    },
+                    "uuid": "156256cd-534a-48d3-b879-01d77975890d"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P4_2",
+                    "pos": {
+                        "x": 72.3,
+                        "y": 103.7
+                    },
+                    "uuid": "c01ea5d9-56b9-48b1-bc60-d39cb1e211a6"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Text height out of range (board setup constraints silk text height min height 0.8000 mm; actual 0.6000 mm)",
+            "items": [
+                {
+                    "description": "Reference field of P2_2",
+                    "pos": {
+                        "x": 78.9,
+                        "y": 9.5
+                    },
+                    "uuid": "2232cea1-8686-4371-af18-137154b3c59f"
+                }
+            ],
+            "severity": "warning",
+            "type": "text_height"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Reference field of P4_1",
+                    "pos": {
+                        "x": 67.5,
+                        "y": 43.7
+                    },
+                    "uuid": "14a9bbdc-db36-438b-a724-4839c8a9030f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Reference field of P1_1",
+                    "pos": {
+                        "x": 51.3,
+                        "y": 28.1
+                    },
+                    "uuid": "eb1963a2-f1fa-4c23-87e8-206e3457e3fd"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Reference field of P2_1",
+                    "pos": {
+                        "x": 84.9,
+                        "y": 68.3
+                    },
+                    "uuid": "8372195f-f91b-4bd1-ab1e-43e3da9f220d"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        }
+    ]
+}
