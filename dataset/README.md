@@ -3,6 +3,7 @@
 数据集与 `pcb-bench/` 并列存放；程序目录不再保留 `data/`。
 
 - `test/`：用户提供的 KiCad 合成板，以及 `case.json` 公共案例清单。
+- `test/d3b/`：PCBWorld D3-B 十块真实中等难度测试板（每板独立 `case.json`）；布线说明见 `test/d3b/README.md`。
 - `geometry-fixtures/`：从旧 `pcb-bench/data/synthetic/` 迁移的七个 JSON 几何回归案例；仅用于内部开发测试，不是正式 KiCad benchmark 输入。
 
 正式案例包含同名 `.kicad_pcb`、`.kicad_pro`，存在 `.kicad_dru` 时须在清单中声明。保留源文件；离线去除参考走线必须对所有算法一致执行。

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 DEFAULT_FREEROUTING_JAR = Path(
-    "/home/xuanzhu/projects/PCBWorld/external/freerouting/freerouting-2.1.0.jar")
+    Path(__file__).resolve().parents[3] / "external/freerouting/freerouting-2.1.0.jar")
 FREEROUTING_JAVA = 21
 DEFAULT_MAX_PASSES = 10
 
@@ -42,8 +42,12 @@ def require_freerouting(jar: Path) -> None:
 def freerouting_command(jar, dsn, ses, tmp_dir, passes) -> list[str]:
     if passes < 1:
         raise ValueError("max-passes must be at least 1")
+    # In pinned 2.1.0, -mp sets maxPasses, but BatchAutorouter checks the
+    # separate stop_pass_no field. Set both so incomplete boards can finish
+    # and publish their SES instead of running until the process watchdog.
     return ["java", "-Djava.awt.headless=true", f"-Djava.io.tmpdir={tmp_dir}", "-Xmx4g",
-            "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes)]
+            "-jar", str(jar), "-de", str(dsn), "-do", str(ses), "-mp", str(passes),
+            f"--router.stop_pass_no={passes}"]
 
 
 def run_freerouting(jar, dsn, ses, tmp_dir, passes, timeout, log_path) -> dict:

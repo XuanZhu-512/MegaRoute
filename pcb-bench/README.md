@@ -20,6 +20,8 @@ python tools/bench.py plan --case ../dataset/test/case.json --backend freeroutin
 
 正式案例以 `configs/case.example.json` 为模板：`.kicad_pcb` 必须配套同名 `.kicad_pro`，存在 `.kicad_dru` 时必须显式声明。当前工具链锁定 KiCad 9.0.8，已完成真实板外部验证。`plan` 只检查执行计划；`run` 执行算法及评分。安装 Python 包后也可使用 `pcb-bench` 命令。
 
+评测运行文件已复制至 `../external/kicad-9.0.8/`（CLI、`pcbnew` 和 KiCad 动态库），工具链配置使用相对该配置文件的路径。`external/` 整体由 Git 忽略，换机器需另行准备；当前 Linux 副本仍依赖本机 Python 3.12 及已有 Conda 运行库，详见 [外部工具说明](../external/README.md)。
+
 ## 构建与验证
 
 需要 CMake >=3.20、C++17 编译器和 Ninja；Python >=3.10 用于 CLI 集成测试。JSON 依赖 nlohmann/json **3.11.3** 已内置，构建不会联网下载依赖。

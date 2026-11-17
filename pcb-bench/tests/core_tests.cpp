@@ -101,6 +101,33 @@ int main() {
         expect(unplated, "unplated multilayer pad rejected");
         auto plated = parse_board(sample(true));
         expect(plated.copper[0].plated && plated.copper[0].layers.size() == 2, "plated pad keeps both layers");
+        auto zero_minimum = sample(true);
+        zero_minimum["rules"]["min_width"] = 0;
+        auto zero_minimum_board = parse_board(zero_minimum);
+        expect(zero_minimum_board.min_width == 0 && zero_minimum_board.nets[0].width == .2,
+               "zero KiCad minimum preserves positive net width");
+        auto rejects_board = [](const Json &input) {
+            try {
+                parse_board(input);
+            } catch (const std::runtime_error &) {
+                return true;
+            }
+            return false;
+        };
+        auto invalid_width = zero_minimum;
+        invalid_width["rules"]["min_width"] = -.1;
+        expect(rejects_board(invalid_width), "negative global minimum rejected");
+        for (double width : {0., -.1}) {
+            invalid_width = zero_minimum;
+            invalid_width["nets"][0]["width"] = width;
+            expect(rejects_board(invalid_width), "nonpositive net width rejected with zero minimum");
+        }
+        invalid_width = zero_minimum;
+        invalid_width["nets"][0].erase("width");
+        expect(rejects_board(invalid_width), "zero inherited net width rejected");
+        invalid_width = sample(true);
+        invalid_width["nets"][0]["width"] = .1;
+        expect(rejects_board(invalid_width), "net width below positive minimum rejected");
         Shape link;
         link.id = "wire";
         link.net = "A";

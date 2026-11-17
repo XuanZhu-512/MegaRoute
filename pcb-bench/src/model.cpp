@@ -125,7 +125,8 @@ Board parse_board(const Json &j) {
     b.via_diameter = number(r.at("via_diameter"));
     b.via_drill = number(r.at("via_drill"));
     b.min_annular = number(r.at("min_annular"));
-    require(b.min_width > 0 && clear >= 0 && b.edge_clearance >= 0 && b.min_annular >= 0 && b.via_drill > 0 &&
+    // KiCad permits a zero global minimum; each net still needs a positive routing width.
+    require(b.min_width >= 0 && clear >= 0 && b.edge_clearance >= 0 && b.min_annular >= 0 && b.via_drill > 0 &&
                 b.via_diameter > b.via_drill,
             "invalid rules");
     require((b.via_diameter - b.via_drill) / 2 >= b.min_annular - eps,
@@ -139,7 +140,7 @@ Board parse_board(const Json &j) {
         x.width = n.contains("width") ? number(n["width"]) : b.min_width;
         x.clearance = n.contains("clearance") ? number(n["clearance"]) : clear;
         require(!x.id.empty() && ids.insert(x.id).second, "duplicate/empty net id");
-        require(x.width >= b.min_width && x.clearance >= 0, "invalid net rules");
+        require(x.width > 0 && x.width >= b.min_width && x.clearance >= 0, "invalid net rules");
         b.nets.push_back(x);
     }
     ids.clear();

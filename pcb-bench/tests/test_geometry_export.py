@@ -100,5 +100,43 @@ p.SaveBoard(sys.argv[2],b)
         self.assertEqual(len(via['copper']),2)
 
 
+@unittest.skipUnless(os.getenv('KICAD_PYTHON') and os.getenv('KICAD_VERSION'),
+                     'native KiCad Python/version not configured')
+class NativeLayerNameTests(unittest.TestCase):
+    def test_custom_layer_aliases_export_standard_identifiers(self):
+        code = '''
+import json, sys
+from pathlib import Path
+import pcbnew as p
+from pcb_bench.kicad_export_worker import export_geometry
+board = p.BOARD()
+board.SetCopperLayerCount(6)
+layers = list(board.GetEnabledLayers().CuStack())
+for layer, alias in zip(layers, ['Top Layer', 'S1', 'S2', 'S3', 'S4', 'Bottom Layer']):
+    board.SetLayerName(layer, alias)
+points = [(0, 0), (10, 0), (10, 10), (0, 10)]
+for start, end in zip(points, points[1:] + points[:1]):
+    edge = p.PCB_SHAPE(board)
+    edge.SetShape(p.SHAPE_T_SEGMENT)
+    edge.SetLayer(p.Edge_Cuts)
+    edge.SetStart(p.VECTOR2I(*(p.FromMM(v) for v in start)))
+    edge.SetEnd(p.VECTOR2I(*(p.FromMM(v) for v in end)))
+    edge.SetWidth(p.FromMM(.05))
+    board.Add(edge)
+path = Path(sys.argv[1])
+p.SaveBoard(str(path), board)
+geometry, _, _ = export_geometry(p, path, sys.argv[2], .005)
+print(json.dumps([layer['name'] for layer in geometry['layers']]))
+'''
+        env = dict(os.environ)
+        env['PYTHONPATH'] = str(ROOT / 'python') + os.pathsep + env.get('PYTHONPATH', '')
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run([os.environ['KICAD_PYTHON'], '-c', code,
+                                   str(Path(tmp) / 'aliases.kicad_pcb'), os.environ['KICAD_VERSION']],
+                                  env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout), ['F.Cu', 'In1.Cu', 'In2.Cu', 'In3.Cu', 'In4.Cu', 'B.Cu'])
+
+
 if __name__ == '__main__':
     unittest.main()

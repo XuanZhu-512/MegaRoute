@@ -130,7 +130,8 @@ def export_geometry(p, board_path, expected_version, error_mm):
     warnings.append("Raw project rules are preserved; per-object effective design-rule resolution is not implemented.")
     geometry = {"schema_version": "kicad-geometry-1.0", "units": "mm",
                 "coordinate_system": "KiCad board-global XY; no Y inversion",
-                "layers": [{"index": i, "kicad_id": z, "name": board.GetLayerName(z)}
+                # Writers need file-format layer identifiers, not user display aliases.
+                "layers": [{"index": i, "kicad_id": z, "name": p.BOARD.GetStandardLayerName(z)}
                            for i, z in enumerate(layers)],
                 "outline": polygons(outline),
                 "nets": [{"code": n.GetNetCode(), "name": n.GetNetname()}

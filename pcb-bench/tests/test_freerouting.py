@@ -24,7 +24,13 @@ class FreeRoutingCommandTests(unittest.TestCase):
         self.assertEqual(command[command.index("-de") + 1], str(dsn))
         self.assertEqual(command[command.index("-do") + 1], str(ses))
         self.assertEqual(command[command.index("-mp") + 1], "10")
+        self.assertIn("--router.stop_pass_no=10", command)
         self.assertEqual(BACKENDS["freerouting"].blockers, ())
+
+    def test_single_pass_also_limits_the_autorouter_loop(self):
+        command = freerouting_command(Path('router.jar'), Path('in.dsn'), Path('out.ses'), Path('tmp'), 1)
+        self.assertEqual(command[command.index('-mp') + 1], '1')
+        self.assertIn('--router.stop_pass_no=1', command)
 
     def test_java_21_is_accepted_and_17_is_rejected(self):
         self.assertEqual(require_java_major('openjdk version "21.0.2" 2024-01-16'), 21)

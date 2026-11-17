@@ -24,9 +24,9 @@ KRT_PAPER_ARGS = (
     "--board-edge-clearance", "0.0",
 )
 
-DEFAULT_KRT_ROOT = Path("/home/xuanzhu/projects/PCBWorld/external/KiCadRoutingTools")
+DEFAULT_KRT_ROOT = Path(__file__).resolve().parents[3] / "external/KiCadRoutingTools"
 DEFAULT_KRT_RUNNER = Path(
-    "/home/xuanzhu/projects/PCBWorld/methods/baselines/rule_based/krt/src")
+    Path(__file__).resolve().parents[3] / "external/krt_runner/src")
 
 
 def krt_arguments(board_in, board_out, geometry, rules) -> list[str]:
@@ -73,6 +73,7 @@ proc = run_route(json.loads(os.environ["KRT_ROUTE_ARGS"]), capture_output=True, 
 sys.stdout.write(json.dumps({"returncode": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}))
 """
     env = dict(os.environ)
+    env.setdefault("KRT_RUST_SO_DIR", str(Path(__file__).resolve().parents[3] / "external/krt-runtime"))
     env["KRT_RUNNER_SRC"] = str(runner_src)
     env["KRT_ROOT"] = str(krt_root)
     env["KRT_ROUTE_ARGS"] = json.dumps(args)
