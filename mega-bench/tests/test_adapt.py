@@ -48,6 +48,17 @@ class AdaptTests(unittest.TestCase):
         board = adapt_geometry(data, rules())
         self.assertEqual(board["fixed_copper"][0]["clearance_override"], 0)
 
+    def test_legacy_negative_clearance_is_normalized_with_provenance(self):
+        data = geometry()
+        data["pads"][1]["local_clearance_mm"] = -.09906
+        data["pads"][1]["net_name"] = ""
+        board = adapt_geometry(data, rules())
+        self.assertEqual(board["fixed_copper"][0]["clearance_override"], 0)
+        self.assertEqual(board["metadata"]["normalized_local_clearances"], [
+            {"id": "smd", "raw_mm": -.09906, "effective_override_mm": 0}])
+        self.assertEqual(board["rules"]["clearance"], .3)
+        self.assertEqual(data["pads"][1]["local_clearance_mm"], -.09906)
+
     def test_copper_text_strokes_keep_real_glyph_gaps(self):
         data = geometry()
         primitives = [{"kind": "segment", "a": [3, 4], "b": [4, 4], "width": .1},

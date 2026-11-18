@@ -22,7 +22,7 @@
       "type": "object", "required": ["id", "copper"],
       "properties": {
         "id": {"type": "string"},
-        "local_clearance_mm": {"type": ["number", "null"], "minimum": 0},
+        "local_clearance_mm": {"type": ["number", "null"], "minimum": -1000000},
         "local_clearance_source": {"enum": ["pad", "footprint", "item", null]},
         "copper": {"type": "array", "items": {
           "type": "object", "required": ["layer", "polygons"],

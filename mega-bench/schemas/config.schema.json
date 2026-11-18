@@ -13,6 +13,7 @@
         "megaroute"
       ]
     },
+    "routing_order": {"enum": ["fixed", "rotate_conflicts"]},
     "step_mm": {
       "type": "number",
       "exclusiveMinimum": 1e-06
@@ -62,24 +63,6 @@
     "penalty_mu": {
       "type": "number",
       "exclusiveMinimum": 0
-    },
-    "history_weight": {
-      "type": "number",
-      "minimum": 0
-    },
-    "history_cell_mm": {
-      "type": "number",
-      "exclusiveMinimum": 1e-06
-    },
-    "stagnation_rounds": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 100
-    },
-    "refinement_levels": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 4
     }
   },
   "required": [

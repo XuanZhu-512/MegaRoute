@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <array>
 #include <map>
-#include <memory>
 #include <limits>
 #include <numeric>
 #include <queue>
@@ -97,10 +96,10 @@ static bool turn_ok(int incoming, int next) {
     return d <= 1;
 }
 struct Cost {
-    double length = 0, drc = 0, via = 0, history = 0;
+    double length = 0, drc = 0, via = 0;
 };
 static double priority_of(const Cost &cost, double h, double alpha, double lambda) {
-    return cost.length + h + alpha * cost.drc + lambda * cost.via + cost.history;
+    return cost.length + h + alpha * cost.drc + lambda * cost.via;
 }
 static int soft_clearance(const std::vector<Violation> &violations,
                           const std::unordered_set<std::string> &immutable, bool &hard) {
@@ -119,7 +118,6 @@ struct Node {
     Point p;
     int z = 0, heading = -1, parent = -1;
     Cost cost;
-    bool terminal = false;
 };
 using Bucket = std::tuple<long long, long long, int>;
 static Bucket bucket(Point p, int z, double cell) {
@@ -134,25 +132,10 @@ struct Attempt {
     double drc = 0;
     std::set<std::string> blockers;
 };
-using History = std::map<Bucket, double>;
-static double history_cost(const Shape &s, const History &history, const Config &c) {
-    if (history.empty() || c.history_weight == 0) return 0;
-    double length = s.kind == "via" ? 2 * s.radius : distance(s.a, s.b);
-    int count = std::max(1, static_cast<int>(std::ceil(length / c.history_cell)));
-    count = std::min(count, 4096);
-    double cost = 0;
-    for (int z : s.layers)
-        for (int i = 0; i < count; ++i) {
-            Point p = s.a + (s.b - s.a) * ((i + .5) / count);
-            auto it = history.find(bucket(p, z, c.history_cell));
-            if (it != history.end()) cost += it->second / count;
-        }
-    return c.history_weight * length / .0254 * cost;
-}
-// Samples are search roots, not invented copper: the first emitted trace/via
-// must overlap the source and pass exactly the same DRC as every other edge.
-static std::vector<Point> source_access_points(const Board &b, const Shape &source,
-                                              const Shape &target, double width, int refinement) {
+// Fallback candidates are checked before search and reduced to one fixed legal
+// terminal per layer. They never become a cloud of additional search roots.
+static std::vector<Point> access_candidates(const Board &b, const Shape &source,
+                                            const Shape &target, double width) {
     std::vector<Point> points{source.a, closest_copper_point(target.a, source)};
     auto add_ring = [&](const auto &ring) {
         for (size_t i = 0; i < ring.size(); ++i) {
@@ -173,8 +156,8 @@ static std::vector<Point> source_access_points(const Board &b, const Shape &sour
     if (box.x0 <= box.x1 && box.y0 <= box.y1) {
         // Bounded deterministic sampling complements geometric features. This is
         // a finite search, not a claim of complete continuous-space coverage.
-        int nx = std::min(16., std::ceil((box.x1-box.x0) / (width / std::pow(2., refinement))));
-        int ny = std::min(16., std::ceil((box.y1-box.y0) / (width / std::pow(2., refinement))));
+        int nx = std::min(16., std::ceil((box.x1-box.x0) / width));
+        int ny = std::min(16., std::ceil((box.y1-box.y0) / width));
         for (int x = 0; x <= nx; ++x)
             for (int y = 0; y <= ny; ++y)
                 points.push_back({box.x0 + (box.x1-box.x0) * x / std::max(1, nx),
@@ -189,51 +172,90 @@ static Shape point_probe(Point p) {
 }
 static Attempt search_pair(const Board &b, const Config &c, const Shape &source, const Shape &target,
                            const Net &n, const std::vector<Shape> &obstacles, const CopperIndex &index,
-                           const History &history, double alpha, bool adaptive, bool strict,
-                           int refinement, const std::function<bool()> &expired, Observer observer) {
+                           double alpha, bool adaptive, bool strict,
+                           const std::function<bool()> &expired, Observer observer) {
     Attempt attempt;
     std::vector<Node> nodes;
     std::map<Bucket, std::vector<int>> spatial;
-    double density = adaptive ? c.d_min / std::pow(2., refinement) : c.d_min;
+    double density = c.d_min;
     double cell = std::max(density, eps * 2);
     std::unordered_set<std::string> immutable;
     for (const auto &s : obstacles) if (s.fixed) immutable.insert(s.id);
+    // Adapt KiCad terminals to fixed legal points before entering the paper's
+    // point-to-point search. The nominal point is preferred; fallback sampling
+    // is used only when that point fails geometry/clearance checks.
+    auto terminal_points = [&](const Shape &terminal, const Shape &other) {
+        std::map<int, Point> result;
+        std::vector<Point> fallback;
+        bool sampled = false;
+        for (int z : terminal.layers) {
+            auto legal = [&](Point p) {
+                if (gap(point_probe(p), terminal) > eps) return false;
+                auto violations = check_shape(b, edge(p, z, p, z, b, n), obstacles, &index);
+                if (strict) return violations.empty();
+                bool hard = false;
+                soft_clearance(violations, immutable, hard);
+                return !hard;
+            };
+            if (legal(terminal.a)) { result[z] = terminal.a; continue; }
+            if (!sampled) {
+                fallback = access_candidates(b, terminal, other, n.width);
+                sampled = true;
+            }
+            double best = std::numeric_limits<double>::infinity();
+            for (auto p : fallback) {
+                if (expired()) break;
+                double score = heuristic(p, other.a);
+                if (score < best && legal(p)) { best = score; result[z] = p; }
+            }
+        }
+        return result;
+    };
+    const auto sources = terminal_points(source, target);
+    const auto targets = terminal_points(target, source);
+    if (sources.empty() || targets.empty()) {
+        attempt.reason = expired() ? "timeout" : "no_legal_terminal_access";
+        if (observer) observer({{"event", "search_failed"}, {"net", n.id}, {"reason", attempt.reason}, {"expanded", 0}});
+        return attempt;
+    }
+    auto target_point = [&](Point p, int z) {
+        auto same_layer = targets.find(z);
+        if (same_layer != targets.end()) return same_layer->second;
+        auto best = targets.begin();
+        for (auto it = targets.begin(); it != targets.end(); ++it)
+            if (heuristic(p, it->second) < heuristic(p, best->second)) best = it;
+        return best->second;
+    };
+    auto is_goal = [&](Point p, int z) {
+        auto it = targets.find(z);
+        return it != targets.end() && distance(p, it->second) <= eps;
+    };
     using Entry = std::tuple<double, double, size_t, int>;
     std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
     size_t order = 0;
     auto score = [&](const Cost &cost, Point p) {
-        // Guide the endpoint into actual copper, rather than toward a possibly
-        // unreachable nominal center. Euclidean distance is a lower bound.
-        double h = std::max(0., gap(point_probe(p), target)) / .0254;
+        double h = std::numeric_limits<double>::infinity();
+        for (const auto &[z, point] : targets) {
+            (void)z;
+            h = std::min(h, heuristic(p, point) / .0254);
+        }
         return std::pair<double, double>{priority_of(cost, h, alpha, c.lambda_v), h};
     };
-    auto push = [&](Point p, int z, int heading, int parent, Cost cost, bool terminal = false) {
+    auto push = [&](Point p, int z, int heading, int parent, Cost cost) {
         int id = static_cast<int>(nodes.size());
-        nodes.push_back({p, z, heading, parent, cost, terminal});
+        nodes.push_back({p, z, heading, parent, cost});
         spatial[bucket(p, z, cell)].push_back(id);
         auto ranked = score(cost, p);
         open.emplace(ranked.first, ranked.second, order++, id);
     };
-    std::set<std::tuple<double, double, int>> seeds;
-    for (auto p : source_access_points(b, source, target, n.width, refinement)) {
-        if (gap(point_probe(p), source) > eps) continue;
-        for (int z : source.layers) {
-            Shape cap = edge(p, z, p, z, b, n);
-            auto violations = check_shape(b, cap, obstacles, &index);
-            bool hard = false;
-            if (strict && !violations.empty()) continue;
-            if (!strict) {
-                soft_clearance(violations, immutable, hard);
-                if (hard) continue;
-            }
-            if (seeds.emplace(p.x, p.y, z).second && nodes.size() < c.max_records)
-                push(p, z, -1, -1, {});
-        }
+    for (const auto &[z, point] : sources) {
+        if (nodes.size() >= c.max_records) break;
+        push(point, z, -1, -1, {});
     }
     int found = -1;
     if (observer)
         observer({{"event", "search_start"}, {"net", n.id}, {"a", source.id}, {"b", target.id},
-                  {"strict", strict}, {"refinement", refinement}});
+                  {"strict", strict}, {"source_seed_count", sources.size()}, {"target_access_count", targets.size()}});
     while (!open.empty()) {
         if (expired()) {
             attempt.reason = "timeout";
@@ -255,7 +277,7 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
         if (std::get<0>(entry) > ranked.first + eps)
             continue;
         ++attempt.expanded;
-        if (current.terminal) {
+        if (is_goal(current.p, current.z)) {
             found = id;
             break;
         }
@@ -274,31 +296,14 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
             }
             for (auto &o : b.keepouts)
                 if (!near && on_layer(o, current.z)) near = gap(point, o) <= threshold;
-            delta = near ? n.width / std::pow(2., refinement) : c.beta * n.width;
+            delta = near ? n.width : c.beta * n.width;
         }
-        int target_layer = on_layer(target, current.z) ? current.z : -1;
-        Point guide = closest_copper_point(current.p, target);
+        int target_layer = targets.count(current.z) ? current.z : -1;
+        Point guide = target_point(current.p, current.z);
         for (auto next : candidates(current.p, current.z, guide, target_layer, delta, b.layers)) {
+            bool goal = is_goal(next.p, next.layer);
+            if (goal) next.p = targets.at(next.layer);
             Shape s = edge(current.p, current.z, next.p, next.layer, b, n);
-            Shape centerline = s;
-            centerline.radius = 0;
-            bool goal = share_layer(s, target) && gap(centerline, target) <= eps;
-            if (goal && s.kind == "segment") {
-                // Stop on the first contact region, before a longer candidate
-                // can leave the board or hit an obstacle beyond the terminal.
-                if (gap(point_probe(current.p), target) > eps) {
-                    double lo = 0, hi = 1;
-                    Point direction = next.p - current.p;
-                    for (int i = 0; i < 40; ++i) {
-                        double mid = (lo + hi) / 2;
-                        Shape prefix = centerline;
-                        prefix.b = current.p + direction * mid;
-                        if (gap(prefix, target) <= 0) hi = mid;
-                        else lo = mid;
-                    }
-                    next.p = s.b = current.p + direction * hi;
-                }
-            }
             // A via is not a planar corner. Eq. 6 / IV-B do not carry heading across layers.
             int heading = -1;
             if (s.kind == "segment") {
@@ -336,7 +341,6 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
             else
                 step.via += b.via_diameter / .0254;
             step.drc += drc;
-            step.history += history_cost(s, history, c);
             auto key = bucket(next.p, next.layer, cell);
             auto [bx, by, bz] = key;
             int exact = -1;
@@ -349,11 +353,12 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                     for (int old : it->second) {
                         double dist = distance(next.p, nodes[old].p);
                         if (dist <= eps) {
-                            // Multiple arrival states share one geometric sample.
-                            if (nodes[old].heading == heading && nodes[old].terminal == goal)
-                                exact = old;
+                            // One state per (x,y,z), independent of arrival heading.
+                            exact = old;
                         }
-                        else if (dist < density && nodes[old].heading == heading)
+                        // Do not prune a step exactly d_min away because of
+                        // floating-point roundoff (e.g. repeated 1 mil steps).
+                        else if (dist + eps < density)
                             dense = true;
                     }
                 }
@@ -362,22 +367,28 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                 if (next_rank.first + eps < score(nodes[exact].cost, nodes[exact].p).first) {
                     nodes[exact].cost = step;
                     nodes[exact].parent = id;
+                    nodes[exact].heading = heading;
                     open.emplace(next_rank.first, next_rank.second, order++, exact);
                 }
                 continue;
             }
-            if (dense && !goal)
+            // Eq. 4/5 are explicit alignment corrections, not a denser
+            // obstacle-aware lattice. Dropping a sub-d_min correction can make
+            // the required target coordinates impossible to represent. Exact
+            // duplicates are still merged above and all DRC checks still apply.
+            bool alignment = next.operation == "axis" || next.operation == "diagonal";
+            if (dense && !goal && !alignment)
                 continue;
             if (nodes.size() >= c.max_records) {
                 attempt.reason = "record_limit";
                 break;
             }
-            push(next.p, next.layer, heading, id, step, goal);
+            push(next.p, next.layer, heading, id, step);
         }
     }
     if (found < 0) {
         if (observer)
-            observer({{"event", "search_failed"}, {"net", n.id}, {"reason", attempt.reason}});
+            observer({{"event", "search_failed"}, {"net", n.id}, {"reason", attempt.reason}, {"expanded", attempt.expanded}});
         return attempt;
     }
     std::vector<int> path;
@@ -436,7 +447,7 @@ struct Bundle {
     std::vector<Shape> copper;
 };
 static Snapshot legal_subset(const Board &b, const std::vector<Bundle> &bundles,
-                             const std::vector<Connection> &req, const std::function<bool()> &expired) {
+                             const std::vector<Connection> &req) {
     std::vector<Shape> kept;
     auto existing = b.copper;
     CopperIndex index(existing);
@@ -444,7 +455,6 @@ static Snapshot legal_subset(const Board &b, const std::vector<Bundle> &bundles,
         for (const auto &bundle : bundles) {
             if (bundle.demand.net != q.net || bundle.demand.a != q.a || bundle.demand.b != q.b)
                 continue;
-            if (expired()) break;
             if (legal_extension(b, bundle.copper, existing, index))
                 for (const auto &s : bundle.copper) {
                     kept.push_back(s);
@@ -474,40 +484,11 @@ static bool better_diagnostic(const Snapshot &a, const Snapshot &b) {
 using DemandKey = std::tuple<std::string, std::string, std::string>;
 static DemandKey demand_key(const Connection &q) { return {q.net, q.a, q.b}; }
 
-static void remember_conflicts(const Json &round, const std::vector<Shape> &fixed,
-                               const std::vector<Shape> &working, History &history, const Config &c) {
-    std::map<std::string, const Shape *> ids;
-    for (const auto &s : fixed) ids[s.id] = &s;
-    for (const auto &s : working) ids[s.id] = &s;
-    // Count a region once per round, independent of route segmentation.
-    std::set<Bucket> touched;
-    for (const auto &v : round.at("violations")) {
-        auto a = ids.find(v.at("a").get<std::string>()), b = ids.find(v.at("b").get<std::string>());
-        if (a == ids.end() || b == ids.end()) continue;
-        auto aa = bounds(*a->second), bb = bounds(*b->second);
-        double margin = v.at("required_mm").get<double>() + eps;
-        double x0 = std::max(aa.x0, bb.x0) - margin, x1 = std::min(aa.x1, bb.x1) + margin;
-        double y0 = std::max(aa.y0, bb.y0) - margin, y1 = std::min(aa.y1, bb.y1) + margin;
-        if (x0 > x1 || y0 > y1) continue;
-        auto [ix0, iy0, z] = bucket({x0, y0}, v.at("layer").get<int>(), c.history_cell);
-        auto [ix1, iy1, unused] = bucket({x1, y1}, z, c.history_cell);
-        (void)unused;
-        if (double(ix1 - ix0 + 1) * double(iy1 - iy0 + 1) > 4096) continue;
-        for (auto x = ix0; x <= ix1; ++x)
-            for (auto y = iy0; y <= iy1; ++y) touched.insert({x, y, z});
-    }
-    for (const auto &key : touched) history[key] = std::min(50., history[key] + 1);
-}
-
 Result route(const Board &b, const Config &c, Observer observer) {
     Result result;
     auto start = std::chrono::steady_clock::now();
     auto elapsed = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(); };
     auto expired = [&] { return elapsed() >= c.time_limit; };
-    // Reserve a final strict repair window instead of spending the entire budget
-    // on negotiated paths which cannot be exported legally.
-    double repair_reserve = c.algorithm == "megaroute" ? std::min(30., c.time_limit * .2) : 0;
-    auto negotiation_expired = [&] { return elapsed() >= c.time_limit - repair_reserve; };
     if (!check_board(b, {}).empty()) {
         result.reason = "input_drc_violations";
         return result;
@@ -529,9 +510,7 @@ Result route(const Board &b, const Config &c, Observer observer) {
     std::set<DemandKey> active;
     bool restrict = false;
     Snapshot legal, diagnostic;
-    History history;
     size_t serial = 0;
-    std::map<std::string, DemandKey> bundle_of_id;
     std::set<std::string> used;
     for (const auto &s : b.copper) used.insert(s.id);
     for (const auto &s : b.keepouts) used.insert(s.id);
@@ -545,10 +524,8 @@ Result route(const Board &b, const Config &c, Observer observer) {
             observer({{"event", "checkpoint"}, {"iteration", result.iterations},
                       {"C_routed", legal.routed}, {"copper", routes_json(legal.copper)["copper"]}});
     };
-    int stagnant = 0, best_routed = -1, best_drc = std::numeric_limits<int>::max();
-    int refinement = 0;
     for (int iteration = 1; iteration <= limit; ++iteration) {
-        if (negotiation_expired()) { result.reason = "timeout"; break; }
+        if (expired()) { result.reason = "timeout"; break; }
         result.iterations = iteration;
         double alpha = negotiated ? logistic_penalty(iteration, c.penalty_L, c.penalty_k, c.penalty_mu) : 0;
         if (restrict) {
@@ -565,27 +542,24 @@ Result route(const Board &b, const Config &c, Observer observer) {
         for (const auto &s : working) graph.add(s);
         std::set<std::string> blocked_by;
         bool stop = false;
-        // Deterministic alternate order on stagnation; retain good branches.
-        auto order = req;
-        if (restrict && stagnant > 0) std::reverse(order.begin(), order.end());
-        size_t pending = 0;
-        for (const auto &q : order)
-            if ((!restrict || active.count(demand_key(q))) && !graph.connected(q.a, q.b)) ++pending;
+        std::vector<Connection> order;
+        for (const auto &q : req)
+            if (!restrict || active.count(demand_key(q))) order.push_back(q);
+        // Keep non-conflicting copper; vary only the priority within the set
+        // being rerouted. This changes neither search cost nor DRC constraints.
+        // Deterministic rotation avoids recreating the same conflicting layout.
+        if (restrict && c.routing_order == "rotate_conflicts" && !order.empty()) {
+            size_t offset = static_cast<size_t>(iteration - 1) % order.size();
+            std::rotate(order.begin(), order.begin() + offset, order.end());
+        }
         for (const auto &q : order) {
-            if (restrict && !active.count(demand_key(q))) continue;
-            if (negotiation_expired()) { result.reason = "timeout"; stop = true; break; }
+            if (expired()) { result.reason = "timeout"; stop = true; break; }
             if (graph.connected(q.a, q.b)) continue;
-            double available = std::max(.001, c.time_limit - repair_reserve - elapsed());
-            double until = elapsed() + std::max(.001, std::min(10., available / std::max<size_t>(1, pending)));
-            auto pair_expired = [&] { return negotiation_expired() || elapsed() >= until; };
             auto attempt = search_pair(b, c, pads.at(q.a), pads.at(q.b), net(b, q.net),
-                                       graph.copper(), graph.index(), history, alpha, adaptive,
-                                       !negotiated, refinement,
-                                       negotiated ? std::function<bool()>(pair_expired) : negotiation_expired, observer);
-            if (pending) --pending;
+                                       graph.copper(), graph.index(), alpha, adaptive,
+                                       !negotiated, expired, observer);
             result.expanded += attempt.expanded;
             if (!attempt.found) {
-                if (attempt.reason == "timeout" && !negotiation_expired()) attempt.reason = "pair_timeout";
                 result.failures.push_back({{"net", q.net}, {"a", q.a}, {"b", q.b}, {"reason", attempt.reason}});
                 blocked_by.insert(attempt.blockers.begin(), attempt.blockers.end());
                 if (attempt.reason == "timeout") { result.reason = "timeout"; stop = true; break; }
@@ -593,7 +567,6 @@ Result route(const Board &b, const Config &c, Observer observer) {
             }
             result.last_path_drc = attempt.drc;
             name_shapes(attempt.copper);
-            for (const auto &s : attempt.copper) bundle_of_id[s.id] = demand_key(q);
             Bundle bundle{q, attempt.copper};
             for (const auto &s : attempt.copper) { working.push_back(s); graph.add(s); }
             bundles.push_back(std::move(bundle));
@@ -608,7 +581,7 @@ Result route(const Board &b, const Config &c, Observer observer) {
         if (shot.drc == 0) {
             if (!legal.exists || better_legal(shot, legal)) { legal = shot; legal_improved = true; }
         } else if (negotiated) {
-            auto subset = legal_subset(b, bundles, req, expired);
+            auto subset = legal_subset(b, bundles, req);
             if (!legal.exists || better_legal(subset, legal)) { legal = std::move(subset); legal_improved = true; }
         }
         if (legal_improved) checkpoint();
@@ -617,10 +590,6 @@ Result route(const Board &b, const Config &c, Observer observer) {
                                 {"C_routed", shot.routed}, {"DRC", shot.drc}, {"alpha", alpha},
                                 {"legal_routed", legal.routed}, {"elapsed_s", elapsed()}});
         if (stop || (shot.routed == static_cast<int>(req.size()) && shot.drc == 0) || !negotiated) break;
-        if (shot.routed > best_routed || (shot.routed == best_routed && shot.drc < best_drc)) {
-            best_routed = shot.routed; best_drc = shot.drc; stagnant = 0;
-        } else ++stagnant;
-        remember_conflicts(round, b.copper, working, history, c);
         std::map<std::string, DemandKey> owners;
         for (const auto &bundle : bundles)
             for (const auto &s : bundle.copper) owners.emplace(s.id, demand_key(bundle.demand));
@@ -638,82 +607,9 @@ Result route(const Board &b, const Config &c, Observer observer) {
             auto it = owners.find(id);
             if (it != owners.end()) next.insert(it->second);
         }
-        if (stagnant >= c.stagnation_rounds) {
-            if (refinement < c.refinement_levels) { ++refinement; stagnant = 0; }
-            else { result.reason = "stagnation"; break; }
-        }
         if (next.empty()) break;
         active.swap(next);
         restrict = true;
-    }
-    // Start from the best legal copper, then repair missing connections strictly.
-    // A failed repair can evict its blocking bundles, not every branch of a net.
-    if (negotiated && legal.exists && legal.routed < static_cast<int>(req.size()) && !expired()) {
-        auto repaired = legal.copper;
-        auto graph = std::make_unique<Connectivity>(b.copper);
-        for (const auto &s : repaired) graph->add(s);
-        std::set<DemandKey> evicted;
-        for (int level = 0; level <= c.refinement_levels && !expired(); ++level) {
-            bool progress = false;
-            for (const auto &q : req) {
-                if (expired()) break;
-                if (graph->connected(q.a, q.b)) continue;
-                // Each pair gets a share, so one unreachable connection cannot consume the remainder.
-                double remaining = std::max(.001, c.time_limit - elapsed());
-                double until = elapsed() + std::min(5., remaining / std::max<size_t>(1, req.size() - legal.routed));
-                auto pair_expired = [&] { return expired() || elapsed() >= until; };
-                double direct_until = level > 0 ? (elapsed() + until) / 2 : until;
-                auto direct_expired = [&] { return expired() || elapsed() >= direct_until; };
-                auto attempt = search_pair(b, c, pads.at(q.a), pads.at(q.b), net(b, q.net),
-                                           graph->copper(), graph->index(), history, 0, true, true,
-                                           level, direct_expired, observer);
-                result.expanded += attempt.expanded;
-                std::vector<Shape> trial;
-                std::unique_ptr<Connectivity> trial_graph;
-                if (!attempt.found && level > 0 && evicted.size() < static_cast<size_t>(c.stagnation_rounds) &&
-                    !pair_expired()) {
-                    // Try one blocking connection at a time. Failed eviction trials
-                    // never damage the current legal graph or the saved best solution.
-                    std::map<DemandKey, size_t> blockers;
-                    for (const auto &s : repaired) {
-                        auto owner = bundle_of_id.find(s.id);
-                        if (attempt.blockers.count(s.id) && owner != bundle_of_id.end() &&
-                            owner->second != demand_key(q) && !evicted.count(owner->second)) ++blockers[owner->second];
-                    }
-                    if (!blockers.empty()) {
-                        auto victim = std::max_element(blockers.begin(), blockers.end(),
-                                      [](const auto &a, const auto &b) { return a.second < b.second; })->first;
-                        for (const auto &s : repaired) {
-                            auto owner = bundle_of_id.find(s.id);
-                            if (owner == bundle_of_id.end() || owner->second != victim) trial.push_back(s);
-                        }
-                        trial_graph = std::make_unique<Connectivity>(b.copper);
-                        for (const auto &s : trial) trial_graph->add(s);
-                        attempt = search_pair(b, c, pads.at(q.a), pads.at(q.b), net(b, q.net),
-                                              trial_graph->copper(), trial_graph->index(), history, 0, true, true,
-                                              level, pair_expired, observer);
-                        result.expanded += attempt.expanded;
-                        if (attempt.found) evicted.insert(victim);
-                    }
-                }
-                if (!attempt.found) continue;
-                name_shapes(attempt.copper);
-                // Parent headings enforce local bends; check joins with all newly added paths as well.
-                const auto &candidate_graph = trial_graph ? *trial_graph : *graph;
-                if (!legal_extension(b, attempt.copper, candidate_graph.copper(), candidate_graph.index())) continue;
-                if (trial_graph) { repaired = std::move(trial); graph = std::move(trial_graph); }
-                for (const auto &s : attempt.copper) bundle_of_id[s.id] = demand_key(q);
-                for (const auto &s : attempt.copper) { repaired.push_back(s); graph->add(s); }
-                progress = true;
-            }
-            if (progress) {
-                auto metrics = evaluate(b, repaired, &req);
-                Snapshot shot{true, metrics.at("C_routed").get<int>(), metrics.at("DRC").get<int>(),
-                              metrics.at("VC").get<int>(), metrics.at("WL_mm").get<double>(), repaired};
-                if (shot.drc == 0 && better_legal(shot, legal)) { legal = std::move(shot); checkpoint(); }
-                if (legal.routed == static_cast<int>(req.size())) break;
-            }
-        }
     }
     if (legal.exists) result.copper = legal.copper;
     if (negotiated && diagnostic.exists) {

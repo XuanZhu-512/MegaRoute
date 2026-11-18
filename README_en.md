@@ -21,7 +21,7 @@ This repository compares automatic PCB routers on unrouted KiCad boards. A case 
 
 **Routers**
 
-- **MegaRoute** — in-tree C++ router (adaptive step size, negotiation, strict repair).
+- **MegaRoute** — in-tree C++ research reimplementation (adaptive steps, shape checks, iterative DRC minimization).
 - **FreeRouting** 2.1.0 — external Java router via Specctra DSN/SES.
 - **KRT** — [KiCadRoutingTools](https://github.com/drandyhaas/KiCadRoutingTools).
 - **TraceMaker** 0.12.1 — external CPU router. Both D3-A and D3-B are evaluated; see Section 5.
@@ -34,15 +34,16 @@ This repository compares automatic PCB routers on unrouted KiCad boards. A case 
 
 ## 2. MegaRoute
 
-MegaRoute searches each two-terminal connection in `(x, y, layer)` and keeps only candidates that pass a shape-based clearance check.
+MegaRoute preserves the adaptive step-size search, five exploration operations, shape-based obstacles, cost guidance, and iterative DRC minimization described in Section IV of the paper.
 
-- Step length is two-level: `delta = w` when the nearest obstacle is within `beta * w`, otherwise `delta = beta * w` (`beta = 5`).
-- From the current node it tries eight planar steps, axis alignment, 45° alignment, a via to another copper layer, and a direct end connection.
-- Cost is routed length, a distance heuristic to the actual target copper region, via cost, and a logistic penalty on spacing violations. The penalty rises over at most 20 passes.
-- Conflict bundles are ripped up and rerouted. History congestion and finer sampling are used when progress stalls. A final pass rejects remaining violations.
-- Fixed pads, board outline, and keepouts are hard constraints. Reported wire length and via count include only copper added by the run.
-- Copper polygons support an outer ring with interior holes; clearance and connectivity use the actual copper region. See [design and retest commands](mega-bench/docs/COPPER_POLYGON_HOLES.md).
-- Connections use legal pad copper regions at both ends rather than requiring nominal pad centers. See [terminal model and tests](mega-bench/docs/TERMINAL_REGIONS.md).
+- Near-obstacle steps are `w`; distant steps are `beta*w`, with `beta=5`. The node density threshold stays at `d_min=1 mil`.
+- Candidates include eight planar directions, axis alignment, 45-degree alignment, layer changes, and direct end connections.
+- The heuristic uses the paper's octile distance. Costs include length, DRC, and vias, without an additional history congestion term.
+- Logistic defaults are `L=200,k=0.4,mu=10`, with at most 20 iterations. Stagnation refinement and extra strict repair searches have been removed.
+- Valid nominal pad centers are preferred. Otherwise, one fixed legal copper access point per layer is selected before point-to-point search.
+- Copper holes, copper text, board boundaries, and clearance adaptation remain supported. Only legal copper is exported; length and via counts cover additions.
+
+See [paper fidelity, implementation boundaries, tests, and retest commands](mega-bench/docs/PAPER_FIDELITY.md).
 
 ## 3. Layout
 
@@ -106,7 +107,7 @@ cmake --build mega-bench/build/dev -j 2
 
 ## 5. Comparison
 
-Averages are the unweighted mean of each board’s `evaluation/metrics.json`. Boards without a finished evaluation are left out and are not treated as zero. `n` is finished evaluations / boards in the split. All four routers have a finished evaluation on every D3-A board. The FreeRouting and KRT rows for D3-A use that full set. Their D3-B rows are unchanged from the existing 10-board results.
+Averages are the unweighted mean of each board’s `evaluation/metrics.json`. Boards without a finished evaluation are left out and are not treated as zero. `n` is finished evaluations / boards in the split. All four routers have a finished evaluation on every current D3-A and D3-B board.
 
 Success means every net is one pad group and the original pads are still present. Routability is routed connections divided by required connections, then averaged across boards. Clean pass means success and zero KiCad DRC errors; warnings are allowed. Wire length and via count include only added copper. A shorter wire length with a lower routability is not a better route.
 
@@ -114,7 +115,7 @@ Success means every net is one pad group and the original pads are still present
 
 | Algorithm | n | Success | Routability | Clean pass | WL (mm) | Vias | DRC errors | Time (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| MegaRoute | 99/99 | 0.9899 | 0.9986 | 0.9899 | 144.01 | 3.87 | 0.00 | 1.04 |
+| MegaRoute | 99/99 | 0.9798 | 0.9985 | 0.9798 | 142.36 | 3.21 | 0.00 | 0.14 |
 | FreeRouting | 99/99 | 0.8788 | 0.9759 | 0.8485 | 152.23 | 0.94 | 0.06 | 8.71 |
 | KRT | 99/99 | 0.7980 | 0.9192 | 0.6768 | 141.55 | 3.84 | 0.58 | 1.10 |
 | TraceMaker | 99/99 | 0.9899 | 0.9949 | 0.9899 | 144.53 | 1.89 | 0.00 | 0.59 |
@@ -123,7 +124,7 @@ Success means every net is one pad group and the original pads are still present
 
 | Algorithm | n | Success | Routability | Clean pass | WL (mm) | Vias | DRC errors | Time (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| MegaRoute | 10/10 | 1.0000 | 1.0000 | 1.0000 | 497.04 | 20.10 | 0.00 | 5.41 |
+| MegaRoute | 10/10 | 1.0000 | 1.0000 | 1.0000 | 495.08 | 17.30 | 0.00 | 1.31 |
 | FreeRouting | 10/10 | 0.8000 | 0.9895 | 0.8000 | 531.64 | 3.50 | 0.00 | 15.17 |
 | KRT | 10/10 | 0.4000 | 0.7490 | 0.1000 | 398.78 | 10.00 | 2.20 | 2.71 |
 | TraceMaker | 10/10 | 1.0000 | 1.0000 | 1.0000 | 503.43 | 11.10 | 0.00 | 8.75 |

@@ -106,6 +106,17 @@ def adapt_geometry(geometry, rules):
     known = {net["id"] for net in nets}
     pads = []
     fixed = []
+    normalized_clearances = []
+    def clearance(item):
+        value = item.get("local_clearance_mm")
+        if value is None:
+            return {}
+        if value < 0:
+            # Legacy KiCad pads may store negative local clearance. It is not
+            # negative physical spacing: retain raw provenance, use the existing
+            # zero/fallback semantics, and keep net/board minimum checks intact.
+            normalized_clearances.append({"id": item["id"], "raw_mm": value, "effective_override_mm": 0})
+        return {"clearance_override": max(0, value)}
     for pad in geometry["pads"]:
         attribute = pad.get("attribute")
         if attribute == "plated_through_hole":
@@ -132,8 +143,7 @@ def adapt_geometry(geometry, rules):
             center = shape["points"][0]
         record = {"id": pad["id"], "center": center, "layers": shape["layers"], **{
             key: shape[key] for key in ("kind", "radius", "points", "holes") if key in shape}}
-        if pad.get("local_clearance_mm") is not None:
-            record["clearance_override"] = pad["local_clearance_mm"]
+        record.update(clearance(pad))
         if obstacle:
             if plated and len(shape["layers"]) > 1:
                 record["plated"] = True
@@ -173,8 +183,7 @@ def adapt_geometry(geometry, rules):
                           "width": item["width_mm"], "layers": layers})
         else:
             raise ValueError(f"unsupported_feature: copper item {kind}")
-        if item.get("local_clearance_mm") is not None:
-            fixed[-1]["clearance_override"] = item["local_clearance_mm"]
+        fixed[-1].update(clearance(item))
     for item in geometry.get("copper_graphics", []):
         if len(item["copper"]) != 1:
             raise ValueError("unsupported_feature: copper graphic on multiple layers")
@@ -197,7 +206,7 @@ def adapt_geometry(geometry, rules):
         fixed.append({"id": item["id"], "kind": "polygon", "layers": [part["layer"]],
                       **_rings(part["polygons"]),
                       "center": _point(part["polygons"][0]["outer"][0])})
-    return {"schema_version": "1.0", "units": "mm", "layers": layer_count, "outline": outline,
+    board = {"schema_version": "1.0", "units": "mm", "layers": layer_count, "outline": outline,
             "holes": holes, "nets": nets, "pads": pads, "fixed_copper": fixed, "keepouts": [],
             "rules": {"min_width": design["min_track_width"], "clearance": design["min_clearance"],
                       "fixed_boundary_policy": "kicad_edges",
@@ -205,6 +214,9 @@ def adapt_geometry(geometry, rules):
                       "via_diameter": design["min_via_diameter"],
                       "via_drill": design["min_through_hole_diameter"],
                       "min_annular": design["min_via_annular_width"]}}
+    if normalized_clearances:
+        board["metadata"] = {"normalized_local_clearances": normalized_clearances}
+    return board
 
 
 def adapt_files(geometry_path, rules_path, out_path):

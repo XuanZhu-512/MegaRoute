@@ -1,5 +1,7 @@
 # 现有失败案例分析（2026-11-18）
 
+D3-A/B 的 MegaRoute 结果现已全部清理，等待论文核心修正版重测；本文件为历史分析记录，见 [PAPER_FIDELITY.md](PAPER_FIDELITY.md)。
+
 清理前的历史快照；其中无有效评估的 12 个目录现已删除，详见 [BASELINE_REPAIRS.md](BASELINE_REPAIRS.md)。下文路径可能对应已清理的旧产物。
 
 范围：D3-A 99 例、D3-B 10 例；只读取现有结果，未重跑实验。以逐例 manifest 和 evaluation/metrics.json 为准，旧 failure_analysis.json 和 README 汇总可能滞后。D3-C 不计入本表。

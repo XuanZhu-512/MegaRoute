@@ -103,12 +103,12 @@ struct Board {
 };
 struct Config {
     std::string algorithm = "baseline_fixed_strict";
+    // The paper does not prescribe the conflict re-routing order.
+    std::string routing_order = "rotate_conflicts";
     double step = .0254, beta = 5, d_min = .0254, lambda_v = 1, time_limit = 60;
     double penalty_L = 200, penalty_k = .4, penalty_mu = 10;
     size_t max_nodes = 1000000, max_records = 2000000;
     int max_iterations = 20;
-    double history_weight = 1, history_cell = 1;
-    int stagnation_rounds = 3, refinement_levels = 2;
 };
 struct Violation {
     std::string rule, a, b;

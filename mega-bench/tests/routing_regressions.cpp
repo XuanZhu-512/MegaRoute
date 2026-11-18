@@ -90,10 +90,9 @@ int main() {
         expect(graph.connected("a", "b"), "incremental connectivity includes through-via middle layers");
         Connectivity after_ripup({first, second, wire});
         expect(!after_ripup.connected("a", "b"), "rebuilding after ripup removes stale connectivity");
-        auto config = parse_config({{"schema_version", "1.0"}, {"max_iterations", 40},
-                                   {"refinement_levels", 2}, {"history_weight", .25}});
-        expect(config.max_iterations == 40 && parse_config(config_json(config)).refinement_levels == 2,
-               "extended iteration and repair controls round-trip");
+        auto config = parse_config({{"schema_version", "1.0"}, {"max_iterations", 40}, {"d_min_mm", .0254}});
+        expect(config.max_iterations == 40 && parse_config(config_json(config)).d_min == .0254,
+               "iteration and density parameters round-trip");
         std::cout << "Routing regression checks passed\n";
         return 0;
     } catch (const std::exception &e) { std::cerr << e.what() << '\n'; return 1; }
