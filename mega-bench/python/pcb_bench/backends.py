@@ -20,6 +20,8 @@ BACKENDS = {
     "freerouting": BackendSpec("freerouting", (
         "kicad_to_dsn", "freerouting_process", "ses_to_kicad"), ()),
     "krt": BackendSpec("krt", ("krt_process", "verify_kicad_output"), ()),
+    "tracemaker": BackendSpec("tracemaker", (
+        "tracemaker_process", "verify_preserved_input", "verify_kicad_output"), ()),
 }
 
 

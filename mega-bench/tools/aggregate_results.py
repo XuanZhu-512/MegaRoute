@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 import statistics
 
-ALGORITHMS = ('megaroute', 'freerouting', 'krt')
+ALGORITHMS = ('megaroute', 'freerouting', 'krt', 'tracemaker')
 
 
 def aggregate(root):

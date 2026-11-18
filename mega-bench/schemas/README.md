@@ -2,8 +2,8 @@
 
 `board`, `config`, `routes`, `event`, `metrics`: geometry-core IR and internal
 diagnostics only. `case` and `toolchain`: public KiCad benchmark input manifests
-and version locks. See `../docs/ARCHITECTURE.md`. The external KiCad metrics schema
-will be added with the external evaluator implementation.
+and version locks. Formal cross-algorithm scores come from the KiCad evaluator
+described in the repository README, not from these geometry-core schemas.
 
 Schemas use JSON Schema draft 2020-12. `board`, `config`, and `routes` describe the
 serialized inputs. `metrics` and `event` constrain stable envelope fields; additional

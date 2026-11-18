@@ -55,7 +55,8 @@ class KiCadGeometryConverter:
             staging.rename(workdir)
         copied = KiCadCase(case.case_id, workdir/'source'/case.board.name,
                            workdir/'source'/case.project.name,
-                           workdir/'source'/case.custom_rules.name if case.custom_rules else None)
+                           workdir/'source'/case.custom_rules.name if case.custom_rules else None,
+                           case.copper_policy)
         return GeometryIRBundle(workdir/'geometry.json', workdir/'source_map.json',
                                 workdir/'conversion_report.json', copied, initial)
 

@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "executable": "../../external/TraceMaker/bin/tracemaker",
+  "exact_version": "0.12.1",
+  "source_commit": "db5950f4b8710d322ecaea3599077688a158ebfb",
+  "source_url": "https://github.com/DingoOz/TraceMaker",
+  "sha256": "92a11d0d4fb3648637eb9637c6b65979b0474f415afbe0d27cf1cc35d514d8dd",
+  "release_archive_sha256": "d46e399f2be428b7f12bfb84ae264885baf51c49397e8f7bd5180c304c818749"
+}

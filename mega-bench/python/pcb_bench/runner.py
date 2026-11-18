@@ -15,6 +15,7 @@ from .converters import KiCadGeometryConverter
 from .evaluation import ExternalKiCadEvaluator, KiCadToolchain, kicad_env
 from .freerouting_backend import DEFAULT_FREEROUTING_JAR, run_freerouting
 from .krt_backend import DEFAULT_KRT_ROOT, DEFAULT_KRT_RUNNER, krt_arguments, run_krt
+from .tracemaker_backend import route_tracemaker
 
 BENCH = Path(__file__).resolve().parents[2]
 REPORT = BENCH / "tools" / "route_report.py"
@@ -27,10 +28,8 @@ def router_config(config) -> Path:
 
 
 def recorded_algorithm(backend, config=None) -> str:
-    if backend == "freerouting":
-        return "freerouting"
     if backend != "megaroute":
-        return "krt"
+        return backend_spec(backend).backend_id
     path = router_config(config)
     if not path.is_file():
         raise FileNotFoundError(f"router config not found: {path}")
@@ -74,7 +73,8 @@ def _routed_board(run_dir: Path) -> Path | None:
 def execute_run(case_path, backend, out, toolchain_path, kicad_python, expected_version,
                 router=None, config=None, krt_root=None, krt_runner=None,
                 freerouting_jar=None, max_passes=10,
-                routing_seconds=300, evaluation_seconds=120):
+                routing_seconds=300, evaluation_seconds=120,
+                tracemaker_exe=None, tracemaker_threads=1, tracemaker_variants=1, tracemaker_seed=1):
     spec = backend_spec(backend)
     if backend != "megaroute":
         spec.preflight()
@@ -106,10 +106,17 @@ def execute_run(case_path, backend, out, toolchain_path, kicad_python, expected_
         elif backend == "krt":
             route_time = _route_krt(kicad_python, bundle, out, krt_root or DEFAULT_KRT_ROOT,
                                     krt_runner or DEFAULT_KRT_RUNNER, budget)
-        else:
+        elif backend == "tracemaker":
+            record = route_tracemaker(bundle.source_case, out, budget, tracemaker_exe,
+                                      tracemaker_threads, tracemaker_variants, tracemaker_seed)
+            route_time = record["wall_s"]
+            manifest["router"] = record
+        elif backend == "freerouting":
             route_time = _route_freerouting(kicad_python, bundle, out, env, expected_version,
                                             freerouting_jar or DEFAULT_FREEROUTING_JAR,
                                             max_passes, budget)
+        else:
+            raise ValueError(f"backend has no execution adapter: {backend}")
         board = _routed_board(out)
         if board is None:
             manifest["status"] = "no_routed_board"
@@ -162,7 +169,7 @@ def _route_megaroute(converter, bundle, out, router, config, budget):
     digests = "".join(f"{name}:{sha256(BENCH / name)}\n" for name in sources)
     current = hashlib.sha256(digests.encode()).hexdigest()
     if default_router and identity["source_fingerprint"] != current:
-        raise RuntimeError("MegaRoute binary is stale; run cmake --build pcb-bench/build/dev")
+        raise RuntimeError("MegaRoute binary is stale; run cmake --build mega-bench/build/dev")
     effective = effective_router_config(json.loads(config.read_text()), budget)
     effective_path = out / "work" / "effective_config.json"
     _write(effective_path, effective)
