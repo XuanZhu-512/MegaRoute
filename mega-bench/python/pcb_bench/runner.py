@@ -13,8 +13,8 @@ from .cases import fingerprints, load_case, snapshot, sha256
 from .contracts import GeometryIRBundle, GeometryRoutingResult, KiCadCase, RoutedKiCadCase, RunBudget
 from .converters import KiCadGeometryConverter
 from .evaluation import ExternalKiCadEvaluator, KiCadToolchain, kicad_env
-from .freerouting_backend import DEFAULT_FREEROUTING_JAR, run_freerouting
-from .krt_backend import DEFAULT_KRT_ROOT, DEFAULT_KRT_RUNNER, krt_arguments, run_krt
+from .freerouting_backend import DEFAULT_FREEROUTING_JAR, run_freerouting, protect_copper_graphics
+from .krt_backend import DEFAULT_KRT_ROOT, DEFAULT_KRT_RUNNER, krt_arguments, run_krt, restore_krt_board
 from .tracemaker_backend import route_tracemaker
 
 BENCH = Path(__file__).resolve().parents[2]
@@ -246,6 +246,8 @@ def _route_krt(python, bundle, out, krt_root, krt_runner, budget):
         _write(out / "work" / "krt_run.json", record)
     if not destination.is_file() or destination.stat().st_size == 0:
         raise RuntimeError(f"KRT produced no board (exit {payload['returncode']})")
+    record["preservation"] = restore_krt_board(source.board, destination)
+    _write(out / "work" / "krt_run.json", record)
     return payload["wall_s"]
 
 
@@ -267,10 +269,14 @@ def _route_freerouting(python, bundle, out, env, expected_version, jar, max_pass
     log_path = work / "routing.log"
     _specctra(python, env, expected_version,
               ["--action", "export-dsn", "--board", str(source.board.resolve()), "--dsn", str(dsn)])
+    graphic_keepouts = protect_copper_graphics(
+        dsn, json.loads(bundle.board_ir.read_text(encoding="utf-8")),
+        json.loads((bundle.conversion_report.parent / "project_rules.json").read_text(encoding="utf-8")))
     payload = run_freerouting(jar, dsn, ses, (work / "tmp").resolve(), max_passes,
                               budget.routing_seconds, log_path)
     _write(work / "freerouting_run.json",
-           {"jar": str(jar), "max_passes": max_passes, "returncode": payload["returncode"],
+           {"jar": str(jar), "max_passes": max_passes, "graphic_keepouts": graphic_keepouts,
+            "returncode": payload["returncode"],
             "wall_s": payload["wall_s"], "command": payload["command"]})
     if not ses.is_file() or ses.stat().st_size == 0:
         raise RuntimeError(f"FreeRouting produced no SES (exit {payload['returncode']})")

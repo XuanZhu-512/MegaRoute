@@ -138,5 +138,62 @@ print(json.dumps([layer['name'] for layer in geometry['layers']]))
         self.assertEqual(json.loads(proc.stdout), ['F.Cu', 'In1.Cu', 'In2.Cu', 'In3.Cu', 'In4.Cu', 'B.Cu'])
 
 
+@unittest.skipUnless(os.getenv('KICAD_PYTHON') and os.getenv('KICAD_VERSION'),
+                     'native KiCad Python/version not configured')
+class NativeRuleSemanticsTests(unittest.TestCase):
+    def test_local_overrides_and_copper_text_use_native_geometry(self):
+        # Entirely synthetic; no dataset boards or routing experiments are involved.
+        code = '''
+import json, sys
+from pathlib import Path
+import pcbnew as p
+from pcb_bench.kicad_export_worker import export_geometry
+from pcb_bench.adapt import adapt_geometry
+v = lambda x, y: p.VECTOR2I(p.FromMM(x), p.FromMM(y))
+board = p.BOARD()
+for start, end in [((0,0),(20,0)), ((20,0),(20,20)), ((20,20),(0,20)), ((0,20),(0,0))]:
+    edge = p.PCB_SHAPE(board); edge.SetShape(p.SHAPE_T_SEGMENT); edge.SetLayer(p.Edge_Cuts)
+    edge.SetStart(v(*start)); edge.SetEnd(v(*end)); edge.SetWidth(p.FromMM(.05)); board.Add(edge)
+fp = p.FOOTPRINT(board); fp.SetReference('U1'); board.Add(fp)
+fp.SetLocalClearance(p.FromMM(.1))
+for number, override in [('1', None), ('2', .05), ('3', 0)]:
+    pad = p.PAD(fp); pad.SetNumber(number); pad.SetAttribute(p.PAD_ATTRIB_SMD)
+    pad.SetShape(p.PAD_SHAPE_CIRCLE); pad.SetSize(v(1,1)); pad.SetPosition(v(5+int(number)*2,5))
+    layer_set = p.LSET(); layer_set.AddLayer(p.F_Cu); pad.SetLayerSet(layer_set)
+    if override is not None: pad.SetLocalClearance(p.FromMM(override))
+    fp.Add(pad)
+field = fp.Reference(); field.SetLayer(p.F_Cu); field.SetVisible(True); field.SetPosition(v(5,10))
+hidden = fp.Value(); hidden.SetLayer(p.F_Cu); hidden.SetVisible(False)
+for visible in (True,):
+    text = p.PCB_TEXT(board); text.SetText('AO'); text.SetTextSize(v(1,1))
+    text.SetTextThickness(p.FromMM(.1)); text.SetPosition(v(10,10)); text.SetLayer(p.B_Cu)
+    text.SetVisible(visible); board.Add(text)
+path = Path(sys.argv[1]); p.SaveBoard(str(path), board)
+geometry, _, report = export_geometry(p, path, sys.argv[2], .005)
+print(json.dumps({'pads': {x['number']: [x['local_clearance_mm'], x['local_clearance_source']]
+                          for x in geometry['pads']},
+                  'graphics': geometry['copper_graphics'], 'ignored': report['ignored_non_copper_graphics']}))
+'''
+        env = dict(os.environ)
+        env['PYTHONPATH'] = str(ROOT / 'python') + os.pathsep + env.get('PYTHONPATH', '')
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run([os.environ['KICAD_PYTHON'], '-c', code,
+                                   str(Path(tmp) / 'rules.kicad_pcb'), os.environ['KICAD_VERSION']],
+                                  env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout)
+        self.assertEqual(result['pads']['1'], [.1, 'footprint'])
+        self.assertEqual(result['pads']['2'], [.05, 'pad'])
+        self.assertEqual(result['pads']['3'], [0, 'pad'])
+        self.assertEqual({g['type'] for g in result['graphics']}, {'PCB_TEXT', 'PCB_FIELD'})
+        self.assertEqual(len(result['graphics']), 2)
+        for graphic in result['graphics']:
+            part = graphic['copper'][0]
+            self.assertEqual(part['polygons'], [])
+            self.assertGreater(len(part['primitives']), 1)
+            self.assertTrue(all(x['kind'] == 'segment' for x in part['primitives']))
+        self.assertEqual(sum(x['reason'] == 'invisible_copper_text' for x in result['ignored']), 1)
+
+
 if __name__ == '__main__':
     unittest.main()

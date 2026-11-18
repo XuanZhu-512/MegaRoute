@@ -5,7 +5,19 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle, Polygon
+from matplotlib.patches import Circle, Polygon, PathPatch
+from matplotlib.path import Path as PlotPath
+
+
+def copper_patch(shape, color):
+    vertices, codes = [], []
+    for i, ring in enumerate([shape['points']] + shape.get('holes', [])):
+        area = sum(a[0]*b[1] - a[1]*b[0] for a, b in zip(ring, ring[1:] + ring[:1]))
+        if (area > 0) != (i == 0):
+            ring = list(reversed(ring))
+        vertices.extend(ring + ring[:1])
+        codes.extend([PlotPath.MOVETO] + [PlotPath.LINETO]*(len(ring)-1) + [PlotPath.CLOSEPOLY])
+    return PathPatch(PlotPath(vertices, codes), facecolor=color, edgecolor=color)
 
 
 def main():
@@ -42,7 +54,7 @@ def main():
                 for c in (s['a'], s['b']):
                     ax.add_patch(Circle(c, s['width']/2, color=color))
             elif s['kind'] == 'polygon':
-                ax.add_patch(Polygon(s['points'], color=color))
+                ax.add_patch(copper_patch(s, color))
             else:
                 ax.add_patch(Circle(s['center'], s['radius'], color=color))
                 if s['kind'] == 'via':

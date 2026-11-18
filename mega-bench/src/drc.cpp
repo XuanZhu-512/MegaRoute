@@ -18,18 +18,19 @@ std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::ve
     double edge = boundary_gap(s, b.outline);
     if (contained && edge <= eps)
         contained = contained_in(s, b.outline);
+    const bool fixed_edges = s.fixed && b.kicad_fixed_edges;
     for (int z : s.layers) {
-        if (!contained || edge < b.edge_clearance - eps)
+        if ((!fixed_edges && !contained) || edge < b.edge_clearance - eps)
             add("board_edge", "outline", z, edge, b.edge_clearance, s.fixed);
-        if (s.kind == "segment" && 2 * s.radius < b.min_width - eps)
+        if (s.kind == "segment" && s.copper_group.empty() && 2 * s.radius < b.min_width - eps)
             add("min_width", "", z, 2 * s.radius, b.min_width, s.fixed);
         if (s.kind == "via" && s.radius - s.drill / 2 < b.min_annular - eps)
             add("annular_ring", "", z, s.radius - s.drill / 2, b.min_annular, s.fixed);
         for (size_t i = 0; i < b.holes.size(); ++i) {
             Shape h;
             h.polygon = b.holes[i];
-            double d = gap(s, h);
-            if (d <= eps || d < b.edge_clearance - eps)
+            double d = fixed_edges ? boundary_gap(s, b.holes[i]) : gap(s, h);
+            if ((!fixed_edges && d <= eps) || d < b.edge_clearance - eps)
                 add("board_hole", "hole_" + std::to_string(i), z, d, b.edge_clearance, s.fixed);
         }
         for (const auto &k : b.keepouts)
@@ -41,7 +42,8 @@ std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::ve
     }
     std::vector<size_t> nearby;
     if (index) {
-        double margin = eps;
+        double margin = std::max({b.min_clearance, s.clearance_override,
+                                  index->max_clearance_override(), 0.}) + eps;
         for (const auto &n : b.nets) margin = std::max(margin, n.clearance + eps);
         nearby = index->query(s, margin);
     } else {
@@ -52,9 +54,15 @@ std::vector<Violation> check_shape(const Board &b, const Shape &s, const std::ve
         const auto &o = copper[id];
         if (o.id == s.id || (!s.net.empty() && s.net == o.net) || !share_layer(s, o))
             continue;
+        if (s.fixed && o.fixed && !s.copper_group.empty() && s.copper_group == o.copper_group)
+            continue;
         double d = gap(s, o);
         double c = std::max(s.net.empty() ? 0. : net(b, s.net).clearance,
                             o.net.empty() ? 0. : net(b, o.net).clearance);
+        // KiCad: positive object overrides replace the net-class rule for this pair.
+        // An explicit zero falls back to net rules; the board minimum always applies.
+        double local = std::max(s.clearance_override, o.clearance_override);
+        c = std::max(b.min_clearance, local > 0 ? local : c);
         if (d <= eps || d < c - eps)
             for (int z : s.layers)
                 if (std::find(o.layers.begin(), o.layers.end(), z) != o.layers.end())
@@ -379,9 +387,10 @@ Json evaluate(const Board &b, const std::vector<Shape> &added,
             {"epsilon_mm", eps},
             {"supported_rules",
              {"copper_short", "clearance", "min_width", "board_edge", "board_hole", "keepout", "annular_ring",
-              "through_via_span", "connectivity", "interior_angle"}},
+              "through_via_span", "connectivity", "interior_angle", "local_clearance_override",
+              "fixed_boundary_policy", "copper_text_obstacles", "copper_polygon_holes"}},
             {"unsupported_features",
-             {"blind_buried_vias", "polygon_pad_holes", "net_class_pair_rules",
+             {"blind_buried_vias", "net_class_pair_rules",
               "differential_pairs", "length_matching", "manufacturing_drill_clearance", "full_angle_rules",
               "EasyEDA"}}};
 }

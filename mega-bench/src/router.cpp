@@ -119,6 +119,7 @@ struct Node {
     Point p;
     int z = 0, heading = -1, parent = -1;
     Cost cost;
+    bool terminal = false;
 };
 using Bucket = std::tuple<long long, long long, int>;
 static Bucket bucket(Point p, int z, double cell) {
@@ -148,6 +149,44 @@ static double history_cost(const Shape &s, const History &history, const Config 
         }
     return c.history_weight * length / .0254 * cost;
 }
+// Samples are search roots, not invented copper: the first emitted trace/via
+// must overlap the source and pass exactly the same DRC as every other edge.
+static std::vector<Point> source_access_points(const Board &b, const Shape &source,
+                                              const Shape &target, double width, int refinement) {
+    std::vector<Point> points{source.a, closest_copper_point(target.a, source)};
+    auto add_ring = [&](const auto &ring) {
+        for (size_t i = 0; i < ring.size(); ++i) {
+            points.push_back(ring[i]);
+            points.push_back((ring[i] + ring[(i+1) % ring.size()]) * .5);
+        }
+    };
+    add_ring(source.polygon);
+    for (const auto &hole : source.holes) add_ring(hole);
+    Shape outline;
+    outline.polygon = b.outline;
+    auto board_box = bounds(outline), box = bounds(source);
+    double margin = width / 2 + b.edge_clearance;
+    box.x0 = std::max(box.x0, board_box.x0 + margin);
+    box.x1 = std::min(box.x1, board_box.x1 - margin);
+    box.y0 = std::max(box.y0, board_box.y0 + margin);
+    box.y1 = std::min(box.y1, board_box.y1 - margin);
+    if (box.x0 <= box.x1 && box.y0 <= box.y1) {
+        // Bounded deterministic sampling complements geometric features. This is
+        // a finite search, not a claim of complete continuous-space coverage.
+        int nx = std::min(16., std::ceil((box.x1-box.x0) / (width / std::pow(2., refinement))));
+        int ny = std::min(16., std::ceil((box.y1-box.y0) / (width / std::pow(2., refinement))));
+        for (int x = 0; x <= nx; ++x)
+            for (int y = 0; y <= ny; ++y)
+                points.push_back({box.x0 + (box.x1-box.x0) * x / std::max(1, nx),
+                                  box.y0 + (box.y1-box.y0) * y / std::max(1, ny)});
+    }
+    return points;
+}
+static Shape point_probe(Point p) {
+    Shape probe;
+    probe.a = probe.b = p;
+    return probe;
+}
 static Attempt search_pair(const Board &b, const Config &c, const Shape &source, const Shape &target,
                            const Net &n, const std::vector<Shape> &obstacles, const CopperIndex &index,
                            const History &history, double alpha, bool adaptive, bool strict,
@@ -163,18 +202,34 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
     std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
     size_t order = 0;
     auto score = [&](const Cost &cost, Point p) {
-        double h = heuristic(p, target.a) / .0254;
+        // Guide the endpoint into actual copper, rather than toward a possibly
+        // unreachable nominal center. Euclidean distance is a lower bound.
+        double h = std::max(0., gap(point_probe(p), target)) / .0254;
         return std::pair<double, double>{priority_of(cost, h, alpha, c.lambda_v), h};
     };
-    auto push = [&](Point p, int z, int heading, int parent, Cost cost) {
+    auto push = [&](Point p, int z, int heading, int parent, Cost cost, bool terminal = false) {
         int id = static_cast<int>(nodes.size());
-        nodes.push_back({p, z, heading, parent, cost});
+        nodes.push_back({p, z, heading, parent, cost, terminal});
         spatial[bucket(p, z, cell)].push_back(id);
         auto ranked = score(cost, p);
         open.emplace(ranked.first, ranked.second, order++, id);
     };
-    for (int z : source.layers)
-        push(source.a, z, -1, -1, {});
+    std::set<std::tuple<double, double, int>> seeds;
+    for (auto p : source_access_points(b, source, target, n.width, refinement)) {
+        if (gap(point_probe(p), source) > eps) continue;
+        for (int z : source.layers) {
+            Shape cap = edge(p, z, p, z, b, n);
+            auto violations = check_shape(b, cap, obstacles, &index);
+            bool hard = false;
+            if (strict && !violations.empty()) continue;
+            if (!strict) {
+                soft_clearance(violations, immutable, hard);
+                if (hard) continue;
+            }
+            if (seeds.emplace(p.x, p.y, z).second && nodes.size() < c.max_records)
+                push(p, z, -1, -1, {});
+        }
+    }
     int found = -1;
     if (observer)
         observer({{"event", "search_start"}, {"net", n.id}, {"a", source.id}, {"b", target.id},
@@ -200,7 +255,7 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
         if (std::get<0>(entry) > ranked.first + eps)
             continue;
         ++attempt.expanded;
-        if (on_layer(target, current.z) && distance(current.p, target.a) <= eps) {
+        if (current.terminal) {
             found = id;
             break;
         }
@@ -222,11 +277,28 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
             delta = near ? n.width / std::pow(2., refinement) : c.beta * n.width;
         }
         int target_layer = on_layer(target, current.z) ? current.z : -1;
-        for (auto next : candidates(current.p, current.z, target.a, target_layer, delta, b.layers)) {
-            bool goal = on_layer(target, next.layer) && distance(next.p, target.a) <= eps;
-            if (goal)
-                next.p = target.a;
+        Point guide = closest_copper_point(current.p, target);
+        for (auto next : candidates(current.p, current.z, guide, target_layer, delta, b.layers)) {
             Shape s = edge(current.p, current.z, next.p, next.layer, b, n);
+            Shape centerline = s;
+            centerline.radius = 0;
+            bool goal = share_layer(s, target) && gap(centerline, target) <= eps;
+            if (goal && s.kind == "segment") {
+                // Stop on the first contact region, before a longer candidate
+                // can leave the board or hit an obstacle beyond the terminal.
+                if (gap(point_probe(current.p), target) > eps) {
+                    double lo = 0, hi = 1;
+                    Point direction = next.p - current.p;
+                    for (int i = 0; i < 40; ++i) {
+                        double mid = (lo + hi) / 2;
+                        Shape prefix = centerline;
+                        prefix.b = current.p + direction * mid;
+                        if (gap(prefix, target) <= 0) hi = mid;
+                        else lo = mid;
+                    }
+                    next.p = s.b = current.p + direction * hi;
+                }
+            }
             // A via is not a planar corner. Eq. 6 / IV-B do not carry heading across layers.
             int heading = -1;
             if (s.kind == "segment") {
@@ -278,7 +350,7 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                         double dist = distance(next.p, nodes[old].p);
                         if (dist <= eps) {
                             // Multiple arrival states share one geometric sample.
-                            if (nodes[old].heading == heading)
+                            if (nodes[old].heading == heading && nodes[old].terminal == goal)
                                 exact = old;
                         }
                         else if (dist < density && nodes[old].heading == heading)
@@ -300,7 +372,7 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                 attempt.reason = "record_limit";
                 break;
             }
-            push(next.p, next.layer, heading, id, step);
+            push(next.p, next.layer, heading, id, step, goal);
         }
     }
     if (found < 0) {
@@ -328,6 +400,18 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
             }
         }
         attempt.copper.push_back(s);
+    }
+    Connectivity contact_check({source, target});
+    size_t contact_id = 0;
+    for (auto shape : attempt.copper) {
+        // Candidate IDs are intentionally empty until the caller assigns them.
+        do { shape.id = "contact_" + std::to_string(contact_id++); }
+        while (shape.id == source.id || shape.id == target.id);
+        contact_check.add(shape);
+    }
+    if (!contact_check.connected(source.id, target.id)) {
+        attempt.reason = "terminal_connectivity";
+        return attempt;
     }
     attempt.found = true;
     attempt.drc = nodes[found].cost.drc;

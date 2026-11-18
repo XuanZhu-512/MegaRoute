@@ -37,6 +37,30 @@ def geometry():
 
 
 class AdaptTests(unittest.TestCase):
+    def test_local_clearance_including_zero_and_netless_obstacle(self):
+        data = geometry()
+        data["pads"][0]["local_clearance_mm"] = .05
+        data["pads"][1]["local_clearance_mm"] = 0
+        board = adapt_geometry(data, rules())
+        self.assertEqual([p["clearance_override"] for p in board["pads"]], [.05, 0])
+        self.assertEqual(board["rules"]["fixed_boundary_policy"], "kicad_edges")
+        data["pads"][1]["net_name"] = ""
+        board = adapt_geometry(data, rules())
+        self.assertEqual(board["fixed_copper"][0]["clearance_override"], 0)
+
+    def test_copper_text_strokes_keep_real_glyph_gaps(self):
+        data = geometry()
+        primitives = [{"kind": "segment", "a": [3, 4], "b": [4, 4], "width": .1},
+                      {"kind": "polygon", "center": [5, 4], "points": [[5, 4], [6, 4], [5, 5]]}]
+        data["copper_graphics"] = [{"id": "text", "type": "PCB_TEXT", "copper": [
+            {"layer": 0, "polygons": [], "primitives": primitives}]}]
+        fixed = adapt_geometry(data, rules())["fixed_copper"]
+        self.assertEqual(len(fixed), 2)
+        self.assertEqual(fixed[0]["a"], [3, 4])
+        self.assertEqual(fixed[1]["points"], primitives[1]["points"])
+        self.assertEqual([x["copper_group"] for x in fixed], ["text", "text"])
+        self.assertEqual(len({x["id"] for x in fixed}), 2)
+
     def test_plated_circle_polygon_and_rules(self):
         board = adapt_geometry(geometry(), rules())
         self.assertEqual(board["rules"]["min_width"], 0.3)
@@ -75,6 +99,30 @@ class AdaptTests(unittest.TestCase):
         self.assertEqual(mount["kind"], "polygon")
         self.assertTrue(mount["plated"])
         self.assertNotIn("net", mount)
+
+    def test_polygon_holes_preserved_for_graphics_and_pad_access(self):
+        data = geometry()
+        hole = [[6.5, 6.5], [7.5, 6.5], [7.5, 7.5], [6.5, 7.5]]
+        poly = data["pads"][1]["copper"][0]["polygons"][0]
+        poly["holes"] = [hole]
+        data["copper_graphics"] = [{"id": "ring", "type": "PCB_SHAPE", "copper": [
+            {"layer": 0, "polygons": [poly]}]}]
+        board = adapt_geometry(data, rules())
+        self.assertEqual(board["fixed_copper"][0]["holes"], [hole])
+        self.assertEqual(board["pads"][1]["holes"], [hole])
+        self.assertEqual(board["pads"][1]["center"], poly["outer"][0])
+        self.assertEqual(data["pads"][1]["position_mm"], [7, 7])
+        poly["holes"] = [[[7, 7], [8, 7]]]
+        with self.assertRaisesRegex(ValueError, "degenerate copper hole"):
+            adapt_geometry(data, rules())
+
+    def test_circle_fast_path_does_not_discard_explicit_holes(self):
+        data = geometry()
+        for part in data["pads"][0]["copper"]:
+            part["polygons"][0]["holes"] = [[[2.95, 2.9], [3.05, 2.9], [3, 2.8]]]
+        pad = adapt_geometry(data, rules())["pads"][0]
+        self.assertEqual(pad["kind"], "polygon")
+        self.assertEqual(len(pad["holes"]), 1)
 
     def test_arc_rejected_and_patterns_resolved(self):
         data = geometry()

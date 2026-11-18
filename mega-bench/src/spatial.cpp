@@ -24,6 +24,7 @@ CopperIndex::CopperIndex(const std::vector<Shape> &objects, double cell)
 void CopperIndex::insert(size_t id) {
     if (id != bounds_.size()) throw std::runtime_error("spatial inserts must be sequential");
     auto box = bounds(objects_.at(id));
+    max_clearance_override_ = std::max(max_clearance_override_, objects_[id].clearance_override);
     bounds_.push_back(box);
     auto x0 = static_cast<long long>(std::floor(box.x0 / cell_));
     auto y0 = static_cast<long long>(std::floor(box.y0 / cell_));

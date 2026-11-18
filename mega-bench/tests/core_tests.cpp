@@ -214,7 +214,9 @@ int main() {
         below.polygon = {{4, .5}, {8, .5}, {8, 3}, {4, 3}};
         blocked.keepouts = {above, below};
         auto denied = route(blocked, strict);
-        expect(evaluate(blocked, denied.copper)["C_routed"] == 0, "strict search rejects the only conflicting corridor");
+        expect(evaluate(blocked, denied.copper)["C_routed"] == 1 &&
+                   evaluate(blocked, denied.copper)["DRC"] == 0,
+               "region search finds a legal approach around immutable copper");
         Config soft = strict;
         soft.algorithm = "megaroute";
         soft.max_iterations = 1;

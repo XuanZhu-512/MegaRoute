@@ -17,7 +17,9 @@ object types for each collection. `metadata` is opaque provenance and does not
 change routing rules. Unknown top-level and rule/config fields are rejected.
 
 Coordinates and lengths are mm, drill is **diameter**, radius is copper **radius**.
-Polygons omit the repeated closing vertex. `layers` on the board is the copper
+Polygons omit the repeated closing vertex. Copper polygons may include `holes`,
+an array of simple rings strictly inside `points`, disjoint and non-nested.
+Hole interiors contain no copper; access centers must lie on copper or its boundary. `layers` on the board is the copper
 layer count; `layers` on shapes is an explicit integer list in stackup order.
 Routes contain only newly added segments/vias; the original board is never modified.
 For manual route injection, supply a routes document to the `check` command.

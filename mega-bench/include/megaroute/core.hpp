@@ -25,17 +25,25 @@ bool inside(Point p, const std::vector<Point> &poly);
 double edge_distance(Point p, const std::vector<Point> &poly);
 bool simple_polygon(const std::vector<Point> &poly);
 
-// Circle: a=b=center; capsule: a,b=centerline; polygon: filled simple polygon.
+// Circle: a=b=center; capsule: a,b=centerline; polygon: outer ring minus disjoint interior holes.
 struct Shape {
     std::string id, net, kind;
     Point a, b;
     double radius = 0, drill = 0;
     std::vector<Point> polygon;
+    std::vector<std::vector<Point>> holes;
     std::vector<int> layers;
     bool fixed = true;
     // One plated pad occupies every listed layer and is a single electrical terminal.
     bool plated = false;
+    // -1 means inherited; zero explicitly suppresses a footprint override.
+    double clearance_override = -1;
+    // Pieces of one fixed copper graphic are one object, not mutual shorts.
+    std::string copper_group;
 };
+bool inside_copper(Point p, const Shape &polygon);
+// Nearest point in the closed copper region, including hole boundaries.
+Point closest_copper_point(Point p, const Shape &shape);
 double gap(const Shape &a, const Shape &b);
 double boundary_gap(const Shape &a, const std::vector<Point> &polygon);
 bool contained_in(const Shape &a, const std::vector<Point> &polygon);
@@ -52,7 +60,9 @@ class CopperIndex {
     std::map<std::tuple<long long, long long, int>, std::vector<size_t>> cells_;
     std::map<int, std::vector<size_t>> wide_, layers_;
     std::vector<Bounds> bounds_;
+    double max_clearance_override_ = 0;
 public:
+    double max_clearance_override() const { return max_clearance_override_; }
     explicit CopperIndex(const std::vector<Shape> &objects, double cell = 2.);
     void insert(size_t id);
     std::vector<size_t> query(const Shape &shape, double margin = eps) const;
@@ -86,6 +96,9 @@ struct Board {
     std::vector<std::vector<Point>> holes;
     std::vector<Shape> copper, keepouts;
     std::vector<Net> nets;
+    double min_clearance = 0;
+    // Imported KiCad fixed copper is checked against edge curves, not filled regions.
+    bool kicad_fixed_edges = false;
     double edge_clearance = .2, min_width = .2, via_diameter = .6, via_drill = .3, min_annular = .1;
 };
 struct Config {

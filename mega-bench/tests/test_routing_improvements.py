@@ -66,6 +66,51 @@ class WatchdogTests(unittest.TestCase):
 @unittest.skipUnless(os.getenv("KICAD_PYTHON") and os.getenv("KICAD_VERSION"),
                      "native KiCad Python/version not configured")
 class NativeWorkerTests(unittest.TestCase):
+    def test_pad_region_contact_does_not_require_pad_centers(self):
+        script = r'''
+import pathlib, sys
+import pcbnew as p
+sys.path.insert(0, sys.argv[1])
+from pcb_bench.kicad_metrics_worker import board_stats
+from pcb_bench.kicad_write_worker import append_routes
+root = pathlib.Path(sys.argv[2])
+board = p.BOARD()
+net = p.NETINFO_ITEM(board, "A", 1)
+board.Add(net)
+for i, (x, width) in enumerate(((2, 2), (12, 6))):
+    footprint = p.FOOTPRINT(board)
+    footprint.SetReference("J" + str(i))
+    board.Add(footprint)
+    pad = p.PAD(footprint)
+    pad.SetNumber("1")
+    pad.SetAttribute(p.PAD_ATTRIB_SMD)
+    pad.SetShape(p.PAD_SHAPE_RECT)
+    layers = p.LSET()
+    layers.AddLayer(p.F_Cu)
+    pad.SetLayerSet(layers)
+    pad.SetSize(p.VECTOR2I(p.FromMM(width), p.FromMM(2)))
+    pad.SetPosition(p.VECTOR2I(p.FromMM(x), p.FromMM(5)))
+    pad.SetNet(net)
+    footprint.Add(pad)
+source = root / "source.kicad_pcb"
+p.SaveBoard(str(source), board)
+assert board_stats(p, source, sys.argv[3])["pad_groups"] == {"A": 2}
+layers = [{"index": 0, "kicad_id": p.F_Cu}, {"index": 1, "kicad_id": p.B_Cu}]
+for name, end_x, layer, groups in (("edge", 9, 0, 1), ("inside", 9.1, 0, 1),
+                                   ("gap", 8.5, 0, 2), ("wrong_layer", 9, 1, 2)):
+    trace = {"id": "trace", "kind": "segment", "net": "A", "a": [3,5],
+             "b": [end_x,5], "width": .4, "layers": [layer]}
+    output = root / (name + ".kicad_pcb")
+    append_routes(p, source, output, {"copper": [trace]}, layers, sys.argv[3])
+    stats = board_stats(p, output, sys.argv[3])
+    assert stats["pad_groups"] == {"A": groups}, (name, stats)
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run([os.environ["KICAD_PYTHON"], "-c", script,
+                                   str(ROOT / "python"), tmp, os.environ["KICAD_VERSION"]],
+                                  capture_output=True, text=True, timeout=30)
+            self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_direct_pad_contacts_and_duplicate_via_writeback(self):
         script = r'''
 import json, pathlib, sys

@@ -40,6 +40,19 @@ def sample_geometry():
 
 
 class GeometryPreviewTests(unittest.TestCase):
+    def test_text_primitives_are_visible_without_filling_glyph_gaps(self):
+        data = sample_geometry()
+        primitives = [{"kind": "segment", "a": [3, 3], "b": [4, 3], "width": .12},
+                      {"kind": "polygon", "center": [5, 3], "points": [[5, 3], [6, 3], [5, 4]]}]
+        data["copper_graphics"] = [{"id": "label", "type": "PCB_TEXT", "copper": [
+            {"layer": 0, "polygons": [], "primitives": primitives}]}]
+        scene = viewer.build_scene(data)
+        record = next(s for s in scene["layers"][0]["shapes"] if s["id"] == "label")
+        self.assertEqual(record["primitives"], primitives)
+        svg = viewer.render_svg(scene)
+        self.assertIn('stroke-width="0.12" stroke-linecap="round"', svg)
+        self.assertIn('d="M 5 3 L 6 3 L 5 4 Z"', svg)
+
     def test_scene_and_svg_keep_source_coordinates(self):
         geometry = json.loads(json.dumps(sample_geometry()))
         scene = viewer.build_scene(geometry)

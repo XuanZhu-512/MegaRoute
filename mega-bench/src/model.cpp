@@ -51,13 +51,21 @@ static std::vector<int> layers(const Json &j, int count) {
     return {result.begin(), result.end()};
 }
 static Shape shape(const Json &j, const Board &b, bool fixed) {
-    fields(j, {"id", "net", "kind", "center", "radius", "points", "a", "b", "width", "layers", "drill", "plated"});
+    fields(j, {"id", "net", "kind", "center", "radius", "points", "a", "b", "width", "layers", "drill", "plated",
+               "clearance_override", "copper_group", "holes"});
     Shape s;
     s.id = j.at("id").get<std::string>();
     require(!s.id.empty(), "empty shape id");
     s.kind = j.at("kind").get<std::string>();
     s.net = j.value("net", std::string{});
     s.fixed = fixed;
+    if (j.contains("clearance_override")) {
+        require(fixed, "route clearance overrides are not supported");
+        s.clearance_override = number(j.at("clearance_override"));
+        require(s.clearance_override >= 0, "negative clearance override");
+    }
+    s.copper_group = j.value("copper_group", std::string{});
+    require(s.copper_group.empty() || (fixed && s.net.empty()), "copper group requires fixed netless copper");
     if (j.contains("plated")) {
         require(j.at("plated").is_boolean(), "plated must be boolean");
         s.plated = j.at("plated").get<bool>();
@@ -82,10 +90,25 @@ static Shape shape(const Json &j, const Board &b, bool fixed) {
         require(s.radius > 0 && s.layers.size() == 1, "segment requires width>0 and one layer");
     } else if (s.kind == "polygon") {
         s.polygon = polygon(j.at("points"));
+        const auto hole_rings = j.value("holes", Json::array());
+        require(hole_rings.is_array(), "polygon holes must be array");
+        for (const auto &ring : hole_rings) {
+            Shape h;
+            h.polygon = polygon(ring);
+            require(contained_in(h, s.polygon) && boundary_gap(h, s.polygon) > eps,
+                    "copper hole must be strictly inside outer ring");
+            for (const auto &old : s.holes) {
+                Shape other;
+                other.polygon = old;
+                require(gap(h, other) > eps, "copper holes overlap or touch");
+            }
+            s.holes.push_back(h.polygon);
+        }
         s.a = s.b = point(j.at("center"));
-        require(inside(s.a, s.polygon), "polygon access center outside copper");
+        require(inside_copper(s.a, s), "polygon access center outside copper");
     } else
         throw std::runtime_error("unsupported_feature: shape " + s.kind);
+    require(!j.contains("holes") || s.kind == "polygon", "holes require polygon");
     require(!s.plated || s.kind == "circle" || s.kind == "polygon", "plated applies only to pads");
     if (s.kind != "via" && !s.plated)
         require(s.layers.size() == 1,
@@ -118,9 +141,14 @@ Board parse_board(const Json &j) {
         b.holes.push_back(p);
     }
     const auto &r = j.at("rules");
-    fields(r, {"min_width", "clearance", "edge_clearance", "via_diameter", "via_drill", "min_annular"});
+    fields(r, {"min_width", "clearance", "edge_clearance", "via_diameter", "via_drill", "min_annular",
+               "fixed_boundary_policy"});
     b.min_width = number(r.at("min_width"));
     double clear = number(r.at("clearance"));
+    b.min_clearance = clear;
+    auto boundary_policy = r.value("fixed_boundary_policy", std::string("contained"));
+    require(boundary_policy == "contained" || boundary_policy == "kicad_edges", "invalid fixed boundary policy");
+    b.kicad_fixed_edges = boundary_policy == "kicad_edges";
     b.edge_clearance = number(r.at("edge_clearance"));
     b.via_diameter = number(r.at("via_diameter"));
     b.via_drill = number(r.at("via_drill"));

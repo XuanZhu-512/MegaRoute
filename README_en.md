@@ -24,7 +24,7 @@ This repository compares automatic PCB routers on unrouted KiCad boards. A case 
 - **MegaRoute** — in-tree C++ router (adaptive step size, negotiation, strict repair).
 - **FreeRouting** 2.1.0 — external Java router via Specctra DSN/SES.
 - **KRT** — [KiCadRoutingTools](https://github.com/drandyhaas/KiCadRoutingTools).
-- **TraceMaker** 0.12.1 — external CPU router. It is wired in; the D3-A / D3-B averages below were taken before it was run on those splits.
+- **TraceMaker** 0.12.1 — external CPU router. Both D3-A and D3-B are evaluated; see Section 5.
 
 **Supporting tools**
 
@@ -38,9 +38,11 @@ MegaRoute searches each two-terminal connection in `(x, y, layer)` and keeps onl
 
 - Step length is two-level: `delta = w` when the nearest obstacle is within `beta * w`, otherwise `delta = beta * w` (`beta = 5`).
 - From the current node it tries eight planar steps, axis alignment, 45° alignment, a via to another copper layer, and a direct end connection.
-- Cost is routed length, an octile distance heuristic, via cost, and a logistic penalty on spacing violations. The penalty rises over at most 20 passes.
+- Cost is routed length, a distance heuristic to the actual target copper region, via cost, and a logistic penalty on spacing violations. The penalty rises over at most 20 passes.
 - Conflict bundles are ripped up and rerouted. History congestion and finer sampling are used when progress stalls. A final pass rejects remaining violations.
 - Fixed pads, board outline, and keepouts are hard constraints. Reported wire length and via count include only copper added by the run.
+- Copper polygons support an outer ring with interior holes; clearance and connectivity use the actual copper region. See [design and retest commands](mega-bench/docs/COPPER_POLYGON_HOLES.md).
+- Connections use legal pad copper regions at both ends rather than requiring nominal pad centers. See [terminal model and tests](mega-bench/docs/TERMINAL_REGIONS.md).
 
 ## 3. Layout
 
@@ -104,7 +106,7 @@ cmake --build mega-bench/build/dev -j 2
 
 ## 5. Comparison
 
-Averages are the unweighted mean of per-board KiCad metrics in `results/D3-A/eval.json` and `results/D3-B/eval.json` (2026-11-16). Boards without a finished evaluation are left out and are not treated as zero. `n` is finished evaluations / boards in the split.
+Averages are the unweighted mean of each board’s `evaluation/metrics.json`. Boards without a finished evaluation are left out and are not treated as zero. `n` is finished evaluations / boards in the split. All four routers have a finished evaluation on every D3-A board. The FreeRouting and KRT rows for D3-A use that full set. Their D3-B rows are unchanged from the existing 10-board results.
 
 Success means every net is one pad group and the original pads are still present. Routability is routed connections divided by required connections, then averaged across boards. Clean pass means success and zero KiCad DRC errors; warnings are allowed. Wire length and via count include only added copper. A shorter wire length with a lower routability is not a better route.
 
@@ -112,9 +114,10 @@ Success means every net is one pad group and the original pads are still present
 
 | Algorithm | n | Success | Routability | Clean pass | WL (mm) | Vias | DRC errors | Time (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| MegaRoute | 97/99 | 0.9381 | 0.9381 | 0.9175 | 139.15 | 3.66 | 0.04 | 0.71 |
-| FreeRouting | 98/99 | 0.8776 | 0.9756 | 0.8469 | 152.61 | 0.95 | 0.06 | 8.76 |
-| KRT | 89/99 | 0.8315 | 0.9343 | 0.7079 | 146.56 | 3.91 | 0.62 | 1.10 |
+| MegaRoute | 99/99 | 0.9899 | 0.9986 | 0.9899 | 144.01 | 3.87 | 0.00 | 1.04 |
+| FreeRouting | 99/99 | 0.8788 | 0.9759 | 0.8485 | 152.23 | 0.94 | 0.06 | 8.71 |
+| KRT | 99/99 | 0.7980 | 0.9192 | 0.6768 | 141.55 | 3.84 | 0.58 | 1.10 |
+| TraceMaker | 99/99 | 0.9899 | 0.9949 | 0.9899 | 144.53 | 1.89 | 0.00 | 0.59 |
 
 ### D3-B (10 boards)
 
@@ -123,6 +126,7 @@ Success means every net is one pad group and the original pads are still present
 | MegaRoute | 10/10 | 1.0000 | 1.0000 | 1.0000 | 497.04 | 20.10 | 0.00 | 5.41 |
 | FreeRouting | 10/10 | 0.8000 | 0.9895 | 0.8000 | 531.64 | 3.50 | 0.00 | 15.17 |
 | KRT | 10/10 | 0.4000 | 0.7490 | 0.1000 | 398.78 | 10.00 | 2.20 | 2.71 |
+| TraceMaker | 10/10 | 1.0000 | 1.0000 | 1.0000 | 503.43 | 11.10 | 0.00 | 8.75 |
 
 ## 6. References
 

@@ -59,6 +59,38 @@ def export_geometry(p, board_path, expected_version, error_mm):
                 result.append(record)
         return result
 
+    def local_clearance(item, footprint=None):
+        value = item.GetLocalClearance()
+        source = "pad" if footprint is not None else "item"
+        # None and zero differ: zero on a pad masks its footprint override.
+        if value is None and footprint is not None:
+            value = footprint.GetLocalClearance()
+            source = "footprint"
+        return {"local_clearance_mm": None if value is None else p.ToMM(value),
+                "local_clearance_source": None if value is None else source}
+
+    def text_copper(item):
+        if hasattr(item, "IsKnockout") and item.IsKnockout():
+            raise ValueError("unsupported_feature: knockout copper text")
+        # TransformShapeToPolygon returns a bounding hull for text. Use the same
+        # stroke/triangle geometry as KiCad's effective text shape instead.
+        shape = item.GetEffectiveTextShape(True)
+        primitives = []
+        for sub in shape.GetSubshapes():
+            if sub.Type() == p.SH_SEGMENT:
+                stroke = p.Cast_to_SHAPE_SEGMENT(sub)
+                seg = stroke.GetSeg()
+                primitives.append({"kind": "segment", "a": point(seg.A), "b": point(seg.B),
+                                   "width": p.ToMM(stroke.GetWidth())})
+            elif sub.Type() == p.SH_SIMPLE:
+                triangle = p.Cast_to_SHAPE_SIMPLE(sub)
+                points = [point(triangle.CPoint(i)) for i in range(triangle.PointCount())]
+                primitives.append({"kind": "polygon", "points": points, "center": points[0]})
+            else:
+                raise ValueError(f"unsupported_feature: copper text primitive {sub.Type()}")
+        return [{"layer": layer_index[z], "polygons": [], "primitives": primitives}
+                for z in layers if item.IsOnLayer(z)]
+
     outline = p.SHAPE_POLY_SET()
     major = int(actual.split('.')[0])
     if major >= 10:
@@ -87,13 +119,13 @@ def export_geometry(p, board_path, expected_version, error_mm):
                          "drill_size_mm": point(pad.GetDrillSize()),
                          "drill_shape_code": int(pad.GetDrillShape()),
                          "drill_position_mm": point(pad.GetPosition()),
-                         "copper": copper(pad)})
+                         "copper": copper(pad), **local_clearance(pad, footprint)})
 
     tracks = []
     for track in board.GetTracks():
         uid = identity(track)
         item = {"id": uid, "type": track.GetClass(), "net_code": track.GetNetCode(),
-                "net_name": track.GetNetname(), "copper": copper(track)}
+                "net_name": track.GetNetname(), "copper": copper(track), **local_clearance(track)}
         if isinstance(track, p.PCB_VIA):
             item.update(position_mm=point(track.GetPosition()), drill_mm=p.ToMM(track.GetDrillValue()),
                         via_type_code=int(track.GetViaType()))
@@ -112,22 +144,25 @@ def export_geometry(p, board_path, expected_version, error_mm):
     all_graphics = list(board.GetDrawings())
     for fp in board.GetFootprints():
         all_graphics.extend(fp.GraphicalItems())
+        all_graphics.extend(fp.GetFields())
     for item in all_graphics:
         if any(item.IsOnLayer(z) for z in layers):
             item_type = item.GetClass()
-            if item_type == "PCB_TEXT":
+            is_text = isinstance(item, p.PCB_TEXT)
+            if is_text and not item.IsVisible():
                 ignored.append({"uuid": item.m_Uuid.AsString(), "type": item_type,
-                                "reason": "copper_text_not_fixed_copper"})
+                                "reason": "invisible_copper_text"})
                 continue
-            if not isinstance(item, p.PCB_SHAPE):
+            if not is_text and not isinstance(item, p.PCB_SHAPE):
                 raise ValueError(f"unsupported copper graphic: {item_type}")
-            graphics.append({"id": identity(item), "type": item_type, "copper": copper(item)})
+            graphics.append({"id": identity(item), "type": item_type,
+                             "copper": text_copper(item) if is_text else copper(item)})
         else:
             ignored.append({"uuid": item.m_Uuid.AsString(), "type": item.GetClass(),
                             "reason": "non_copper_graphic_preserved_in_source"})
     warnings.append("Copper contours are conservative outer polygon approximations, not exact analytic curves.")
     warnings.append("Pad drill geometry is separate; copper polygons are outer envelopes, not hole-subtracted solids.")
-    warnings.append("Raw project rules are preserved; per-object effective design-rule resolution is not implemented.")
+    warnings.append("Pad/footprint local clearance overrides are exported; arbitrary custom design rules are not resolved.")
     geometry = {"schema_version": "kicad-geometry-1.0", "units": "mm",
                 "coordinate_system": "KiCad board-global XY; no Y inversion",
                 # Writers need file-format layer identifiers, not user display aliases.

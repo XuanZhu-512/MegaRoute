@@ -54,45 +54,85 @@ bool inside(Point p, const std::vector<Point> &poly) {
     return result;
 }
 bool simple_polygon(const std::vector<Point> &p) {
+    // KiCad coordinates resolve 1 nm (1e-6 mm). DRC's eps must not
+    // collapse valid edges or reject nearby, nonintersecting ring edges.
+    constexpr double topology_eps = 1e-9;
     if (p.size() < 3)
         return false;
     double area = 0;
     for (size_t i = 0; i < p.size(); ++i) {
         auto a = p[i], b = p[(i + 1) % p.size()];
-        if (distance(a, b) <= eps)
+        if (distance(a, b) <= topology_eps)
             return false;
         area += cross(a, b);
         for (size_t j = i + 1; j < p.size(); ++j) {
             if (j == i + 1 || (i == 0 && j == p.size() - 1))
                 continue;
-            if (segment_distance(a, b, p[j], p[(j + 1) % p.size()]) <= eps)
+            if (segment_distance(a, b, p[j], p[(j + 1) % p.size()]) <= topology_eps)
                 return false;
         }
     }
-    return std::abs(area) > eps * eps;
+    return std::abs(area) > topology_eps * topology_eps;
 }
-static double segment_polygon(Point a, Point b, const std::vector<Point> &p) {
-    if (inside(a, p) || inside(b, p))
-        return 0;
+// Hole interiors are empty; their boundaries remain part of the closed copper set.
+bool inside_copper(Point p, const Shape &s) {
+    if (!inside(p, s.polygon)) return false;
+    for (const auto &hole : s.holes)
+        if (inside(p, hole) && edge_distance(p, hole) > eps) return false;
+    return true;
+}
+template <typename F> static void rings(const Shape &s, F visit) {
+    visit(s.polygon);
+    for (const auto &hole : s.holes) visit(hole);
+}
+Point closest_copper_point(Point p, const Shape &s) {
+    auto project = [](Point p, Point a, Point b) {
+        auto v = b - a;
+        double len2 = v.x * v.x + v.y * v.y;
+        double t = len2 == 0 ? 0 : std::clamp(((p.x-a.x)*v.x + (p.y-a.y)*v.y) / len2, 0., 1.);
+        return a + v * t;
+    };
+    if (s.polygon.empty()) {
+        Point q = project(p, s.a, s.b);
+        double d = distance(p, q);
+        return d <= s.radius ? p : q + (p-q) * (s.radius / d);
+    }
+    if (inside_copper(p, s)) return p;
+    Point best = s.polygon.front();
+    double d = std::numeric_limits<double>::infinity();
+    rings(s, [&](const auto &ring) {
+        for (size_t i = 0; i < ring.size(); ++i) {
+            Point q = project(p, ring[i], ring[(i+1) % ring.size()]);
+            double candidate = distance(p, q);
+            if (candidate < d) { d = candidate; best = q; }
+        }
+    });
+    return best;
+}
+static double segment_polygon(Point a, Point b, const Shape &s) {
+    if (inside_copper(a, s) || inside_copper(b, s)) return 0;
     double d = 1e100;
-    for (size_t i = 0; i < p.size(); ++i)
-        d = std::min(d, segment_distance(a, b, p[i], p[(i + 1) % p.size()]));
+    rings(s, [&](const auto &ring) {
+        for (size_t i = 0; i < ring.size(); ++i)
+            d = std::min(d, segment_distance(a, b, ring[i], ring[(i + 1) % ring.size()]));
+    });
     return d;
 }
 double gap(const Shape &a, const Shape &b) {
     if (a.polygon.empty() && b.polygon.empty())
         return segment_distance(a.a, a.b, b.a, b.b) - a.radius - b.radius;
-    if (a.polygon.empty())
-        return segment_polygon(a.a, a.b, b.polygon) - a.radius;
-    if (b.polygon.empty())
-        return segment_polygon(b.a, b.b, a.polygon) - b.radius;
-    if (inside(a.polygon[0], b.polygon) || inside(b.polygon[0], a.polygon))
-        return 0;
+    if (a.polygon.empty()) return segment_polygon(a.a, a.b, b) - a.radius;
+    if (b.polygon.empty()) return segment_polygon(b.a, b.b, a) - b.radius;
+    if (inside_copper(a.polygon[0], b) || inside_copper(b.polygon[0], a)) return 0;
     double d = 1e100;
-    for (size_t i = 0; i < a.polygon.size(); ++i)
-        for (size_t j = 0; j < b.polygon.size(); ++j)
-            d = std::min(d, segment_distance(a.polygon[i], a.polygon[(i + 1) % a.polygon.size()],
-                                             b.polygon[j], b.polygon[(j + 1) % b.polygon.size()]));
+    rings(a, [&](const auto &ra) {
+        rings(b, [&](const auto &rb) {
+            for (size_t i = 0; i < ra.size(); ++i)
+                for (size_t j = 0; j < rb.size(); ++j)
+                    d = std::min(d, segment_distance(ra[i], ra[(i + 1) % ra.size()],
+                                                     rb[j], rb[(j + 1) % rb.size()]));
+        });
+    });
     return d;
 }
 double boundary_gap(const Shape &a, const std::vector<Point> &poly) {
@@ -102,8 +142,12 @@ double boundary_gap(const Shape &a, const std::vector<Point> &poly) {
         if (a.polygon.empty())
             d = std::min(d, segment_distance(a.a, a.b, c, e) - a.radius);
         else
-            for (size_t i = 0; i < a.polygon.size(); ++i)
-                d = std::min(d, segment_distance(a.polygon[i], a.polygon[(i + 1) % a.polygon.size()], c, e));
+            // A board edge entirely inside a copper hole measures to that hole,
+            // rather than to the more distant outer ring.
+            rings(a, [&](const auto &ring) {
+                for (size_t i = 0; i < ring.size(); ++i)
+                    d = std::min(d, segment_distance(ring[i], ring[(i + 1) % ring.size()], c, e));
+            });
     }
     return d;
 }

@@ -90,9 +90,13 @@ def build_scene(geometry):
             if polygons:
                 shapes.append(shape_record(item, role, [poly for group in polygons for poly in group]))
         for item in geometry["copper_graphics"]:
-            polygons = [part["polygons"] for part in item["copper"] if part["layer"] == index]
-            if polygons:
-                shapes.append(shape_record(item, "graphic", [poly for group in polygons for poly in group]))
+            parts = [part for part in item["copper"] if part["layer"] == index]
+            if parts:
+                record = shape_record(item, "graphic", [poly for part in parts for poly in part["polygons"]])
+                primitives = [dict(p) for part in parts for p in part.get("primitives", [])]
+                if primitives:
+                    record["primitives"] = primitives
+                shapes.append(record)
         layers.append({"index": index, "name": layer["name"], "shapes": shapes})
     return {
         "schema_version": "geometry-scene-1.0",
@@ -128,6 +132,14 @@ def iter_points(scene):
                 yield from poly["outer"]
                 for hole in poly["holes"]:
                     yield from hole
+            for primitive in shape.get("primitives", []):
+                if primitive["kind"] == "polygon":
+                    yield from primitive["points"]
+                else:
+                    radius = primitive["width"] / 2
+                    for x, y in (primitive["a"], primitive["b"]):
+                        yield [x - radius, y - radius]
+                        yield [x + radius, y + radius]
             drill = shape.get("drill")
             if not drill:
                 continue
@@ -185,6 +197,17 @@ def render_svg(scene):
                 f'<path d="{polygon_path(shape["polygons"])}" fill="{fill}" stroke="{stroke}" '
                 f'stroke-width="{number_text(width_mm)}" fill-rule="evenodd"/>'
             )
+            for primitive in shape.get("primitives", []):
+                if primitive["kind"] == "polygon":
+                    chunks.append(f'<path d="{ring_path(primitive["points"])}" fill="{fill}"/>')
+                else:
+                    ax, ay = primitive["a"]
+                    bx, by = primitive["b"]
+                    chunks.append(
+                        f'<line x1="{number_text(ax)}" y1="{number_text(ay)}" '
+                        f'x2="{number_text(bx)}" y2="{number_text(by)}" stroke="{fill}" '
+                        f'stroke-width="{number_text(primitive["width"])}" stroke-linecap="round"/>'
+                    )
             chunks.append("</g>")
             if shape.get("drill"):
                 drills.append(shape["drill"])

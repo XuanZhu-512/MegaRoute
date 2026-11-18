@@ -18,6 +18,31 @@
     "point": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
     "ring": {"type": "array", "items": {"$ref": "#/$defs/point"}, "minItems": 3},
     "polygons": {"type": "array", "items": {"type": "object", "required": ["outer", "holes"], "properties": {"outer": {"$ref": "#/$defs/ring"}, "holes": {"type": "array", "items": {"$ref": "#/$defs/ring"}}}}},
-    "copperObject": {"type": "object", "required": ["id", "copper"], "properties": {"id": {"type": "string"}, "copper": {"type": "array", "items": {"type": "object", "required": ["layer", "polygons"], "properties": {"layer": {"type": "integer", "minimum": 0}, "polygons": {"$ref": "#/$defs/polygons"}}}}}}
+    "copperObject": {
+      "type": "object", "required": ["id", "copper"],
+      "properties": {
+        "id": {"type": "string"},
+        "local_clearance_mm": {"type": ["number", "null"], "minimum": 0},
+        "local_clearance_source": {"enum": ["pad", "footprint", "item", null]},
+        "copper": {"type": "array", "items": {
+          "type": "object", "required": ["layer", "polygons"],
+          "properties": {
+            "layer": {"type": "integer", "minimum": 0},
+            "polygons": {"$ref": "#/$defs/polygons"},
+            "primitives": {"type": "array", "items": {"$ref": "#/$defs/textPrimitive"}}
+          }
+        }}
+      }
+    },
+    "textPrimitive": {"oneOf": [
+      {"type": "object", "required": ["kind", "a", "b", "width"], "properties": {
+        "kind": {"const": "segment"}, "a": {"$ref": "#/$defs/point"},
+        "b": {"$ref": "#/$defs/point"}, "width": {"type": "number", "exclusiveMinimum": 0}
+      }, "additionalProperties": false},
+      {"type": "object", "required": ["kind", "center", "points"], "properties": {
+        "kind": {"const": "polygon"}, "center": {"$ref": "#/$defs/point"},
+        "points": {"$ref": "#/$defs/ring"}
+      }, "additionalProperties": false}
+    ]}
   }
 }

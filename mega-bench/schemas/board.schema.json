@@ -95,6 +95,8 @@
                 "minItems": 1,
                 "uniqueItems": true
               },
+              "clearance_override": {"type": "number", "minimum": 0, "maximum": 1000000.0},
+              "copper_group": {"type": "string"},
               "kind": {
                 "const": "circle"
               },
@@ -146,9 +148,12 @@
                 "minItems": 1,
                 "uniqueItems": true
               },
+              "clearance_override": {"type": "number", "minimum": 0, "maximum": 1000000.0},
+              "copper_group": {"type": "string"},
               "kind": {
                 "const": "polygon"
               },
+              "holes": {"$ref": "#/properties/holes"},
               "center": {
                 "type": "array",
                 "items": {
@@ -213,6 +218,8 @@
                 "minItems": 1,
                 "uniqueItems": true
               },
+              "clearance_override": {"type": "number", "minimum": 0, "maximum": 1000000.0},
+              "copper_group": {"type": "string"},
               "kind": {
                 "const": "segment"
               },
@@ -272,6 +279,8 @@
                 "minItems": 1,
                 "uniqueItems": true
               },
+              "clearance_override": {"type": "number", "minimum": 0, "maximum": 1000000.0},
+              "copper_group": {"type": "string"},
               "kind": {
                 "const": "via"
               },
@@ -317,7 +326,11 @@
                 "minItems": 1,
                 "uniqueItems": true
               },
+              "clearance_override": {"type": "number", "minimum": 0, "maximum": 1000000.0},
+              "copper_group": {"type": "string"},
               "kind": {"const": "polygon"},
+              "holes": {"$ref": "#/properties/holes"},
+              "plated": {"type": "boolean"},
               "center": {
                 "type": "array",
                 "items": {"type": "number", "minimum": -1000000.0, "maximum": 1000000.0},
@@ -386,9 +399,10 @@
     "rules": {
       "type": "object",
       "properties": {
+        "fixed_boundary_policy": {"enum": ["contained", "kicad_edges"]},
         "min_width": {
           "type": "number",
-          "exclusiveMinimum": 0,
+          "minimum": 0,
           "maximum": 1000000.0
         },
         "clearance": {

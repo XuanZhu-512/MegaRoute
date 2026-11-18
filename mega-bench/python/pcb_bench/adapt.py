@@ -20,12 +20,13 @@ def _rings(polygons):
     if len(polygons) != 1:
         raise ValueError("unsupported_feature: copper with multiple outlines")
     poly = polygons[0]
-    if poly.get("holes"):
-        raise ValueError("unsupported_feature: polygon holes are not part of the routing model")
     outer = [_point(p) for p in poly["outer"]]
     if len(outer) < 3:
         raise ValueError("degenerate polygon")
-    return outer
+    holes = [[_point(p) for p in ring] for ring in poly.get("holes", [])]
+    if any(len(ring) < 3 for ring in holes):
+        raise ValueError("degenerate copper hole")
+    return {"points": outer, "holes": holes}
 
 
 def _shared_outline(parts):
@@ -38,12 +39,14 @@ def _shared_outline(parts):
     first = parts[0]["polygons"]
     if any(part["polygons"] != first for part in parts):
         raise ValueError("unsupported_feature: pad layers do not share one outline")
-    return {"kind": "polygon", "points": _rings(first), "layers": layers}
+    return {"kind": "polygon", **_rings(first), "layers": layers}
 
 
 def _circle_layers(parts):
     sizes = []
     for part in parts:
+        if any(poly.get("holes") for poly in part.get("polygons", [])):
+            return None
         if part.get("shape_code") != CIRCLE:
             return None
         width, height = _point(part["size_mm"])
@@ -67,7 +70,7 @@ def _via_radius(center, item):
     radius = 0
     for part in item["copper"]:
         for poly in part["polygons"]:
-            for px, py in _rings([poly]):
+            for px, py in _rings([poly])["points"]:
                 radius = max(radius, math.hypot(px - x, py - y))
     return radius
 
@@ -121,9 +124,16 @@ def adapt_geometry(geometry, rules):
         if obstacle and net_name:
             raise ValueError(f"pad {pad['id']} has no electrical net")
         if shape["kind"] == "circle" and obstacle:
-            shape = {"kind": "polygon", "points": _rings(copper[0]["polygons"]), "layers": shape["layers"]}
+            shape = {"kind": "polygon", **_rings(copper[0]["polygons"]), "layers": shape["layers"]}
+        # The routing access point must lie on copper, even for a custom annular pad.
+        # Keep the source position in the lossless geometry bundle; use a valid
+        # outer-boundary access point for polygon pads with explicit cutouts.
+        if shape.get("holes"):
+            center = shape["points"][0]
         record = {"id": pad["id"], "center": center, "layers": shape["layers"], **{
-            key: shape[key] for key in ("kind", "radius", "points") if key in shape}}
+            key: shape[key] for key in ("kind", "radius", "points", "holes") if key in shape}}
+        if pad.get("local_clearance_mm") is not None:
+            record["clearance_override"] = pad["local_clearance_mm"]
         if obstacle:
             if plated and len(shape["layers"]) > 1:
                 record["plated"] = True
@@ -163,16 +173,34 @@ def adapt_geometry(geometry, rules):
                           "width": item["width_mm"], "layers": layers})
         else:
             raise ValueError(f"unsupported_feature: copper item {kind}")
+        if item.get("local_clearance_mm") is not None:
+            fixed[-1]["clearance_override"] = item["local_clearance_mm"]
     for item in geometry.get("copper_graphics", []):
         if len(item["copper"]) != 1:
             raise ValueError("unsupported_feature: copper graphic on multiple layers")
         part = item["copper"][0]
+        if "primitives" in part:
+            if item.get("type") not in ("PCB_TEXT", "PCB_FIELD"):
+                raise ValueError("unsupported_feature: primitives require copper text")
+            for i, primitive in enumerate(part["primitives"]):
+                if primitive.get("kind") == "segment":
+                    shape = {"kind": "segment", "a": _point(primitive["a"]),
+                             "b": _point(primitive["b"]), "width": primitive["width"]}
+                elif primitive.get("kind") == "polygon":
+                    shape = {"kind": "polygon", "center": _point(primitive["center"]),
+                             "points": [_point(p) for p in primitive["points"]]}
+                else:
+                    raise ValueError("unsupported_feature: copper text primitive")
+                fixed.append({**shape, "id": f"{item['id']}:text:{i}",
+                              "copper_group": item["id"], "layers": [part["layer"]]})
+            continue
         fixed.append({"id": item["id"], "kind": "polygon", "layers": [part["layer"]],
-                      "points": _rings(part["polygons"]),
+                      **_rings(part["polygons"]),
                       "center": _point(part["polygons"][0]["outer"][0])})
     return {"schema_version": "1.0", "units": "mm", "layers": layer_count, "outline": outline,
             "holes": holes, "nets": nets, "pads": pads, "fixed_copper": fixed, "keepouts": [],
             "rules": {"min_width": design["min_track_width"], "clearance": design["min_clearance"],
+                      "fixed_boundary_policy": "kicad_edges",
                       "edge_clearance": design["min_copper_edge_clearance"],
                       "via_diameter": design["min_via_diameter"],
                       "via_drill": design["min_through_hole_diameter"],
