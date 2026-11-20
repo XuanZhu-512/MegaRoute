@@ -1,5 +1,6 @@
 """Routing-board adapter preserves KiCad geometry and resolved net rules."""
 import json
+import copy
 from pathlib import Path
 import sys
 import unittest
@@ -37,6 +38,73 @@ def geometry():
 
 
 class AdaptTests(unittest.TestCase):
+    def test_via_presets_are_constrained_by_board_minima(self):
+        config = rules()
+        design = config["board"]["design_settings"]["rules"]
+        design.update(min_via_diameter=.5, min_through_hole_diameter=.3, min_via_annular_width=.15)
+        default = config["net_settings"]["classes"][0]
+        default.update(via_diameter=.8, via_drill=.5)
+        chosen = adapt_geometry(geometry(), config)["rules"]
+        self.assertEqual((chosen["via_diameter"], chosen["via_drill"]), (.8, .5))
+        default.update(via_diameter=.4, via_drill=.3)
+        chosen = adapt_geometry(geometry(), config)["rules"]
+        self.assertEqual((chosen["via_diameter"], chosen["via_drill"]), (.6, .3))
+        design.update(min_via_diameter=.381, min_through_hole_diameter=.381, min_via_annular_width=.127)
+        self.assertEqual(adapt_geometry(geometry(), config)["rules"]["via_diameter"], .635)
+
+    def test_via_uses_active_classes_and_integer_nanometres(self):
+        config = rules()
+        config["net_settings"]["classes"].extend([
+            {"name": "Active", "track_width": .3, "clearance": .3, "via_drill": .8000001, "via_diameter": 1.5},
+            {"name": "Unused", "via_drill": 5, "via_diameter": 10}])
+        config["net_settings"]["netclass_assignments"] = {"NET1": "Active"}
+        selected = adapt_geometry(geometry(), config)["rules"]
+        self.assertEqual(selected["via_drill"], .800001)
+        self.assertEqual(selected["via_diameter"], 1.5)
+        config["net_settings"]["classes"][1]["via_drill"] = float('nan')
+        with self.assertRaisesRegex(ValueError, "invalid via dimension"):
+            adapt_geometry(geometry(), config)
+
+    def test_connector_layers_are_independent_terminals(self):
+        data = geometry()
+        pad = data["pads"][0]
+        pad["attribute"] = "connector"
+        pad["copper"][1]["size_mm"] = [1.4, 1.4]
+        result = adapt_geometry(data, rules())
+        terminals = [p for p in result["pads"] if p["id"].startswith("pth")]
+        self.assertEqual([p["layers"] for p in terminals], [[0], [1]])
+        self.assertTrue(all(not p["plated"] for p in terminals))
+        self.assertEqual([p["radius"] for p in terminals], [.6, .7])
+
+    def test_only_non_electrical_drill_free_auxiliaries_can_be_ignored(self):
+        data = geometry()
+        pad = data["pads"][1]
+        pad.update(net_name="", net_code=0, copper=[], drill_size_mm=[0, 0])
+        before = copy.deepcopy(data)
+        result = adapt_geometry(data, rules())
+        self.assertEqual(len(result["pads"]), 1)
+        self.assertEqual(result["metadata"]["ignored_pads"][0]["id"], pad["id"])
+        self.assertEqual(data, before)
+        for changes in [{"net_name": "NET1"}, {"net_code": 1}, {"drill_size_mm": [.5, .5]},
+                        {"attribute": "non_plated_hole"}]:
+            bad = copy.deepcopy(before)
+            bad["pads"][1].update(changes)
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, "no copper"):
+                adapt_geometry(bad, rules())
+
+    def test_netless_numbered_pad_groups_do_not_join_other_pads(self):
+        data = geometry()
+        pad = data["pads"][1]
+        pad.update(net_name="", footprint_uuid="footprint-a", number="9")
+        for ident, fp, number in [("same", "footprint-a", "9"), ("other-fp", "footprint-b", "9"),
+                                  ("other-number", "footprint-a", "8"), ("logo", "footprint-a", "")]:
+            data["pads"].append({**copy.deepcopy(pad), "id": ident, "footprint_uuid": fp, "number": number})
+        fixed = {x["id"]: x for x in adapt_geometry(data, rules())["fixed_copper"]}
+        self.assertEqual(fixed["smd"]["copper_group"], fixed["same"]["copper_group"])
+        self.assertNotEqual(fixed["smd"]["copper_group"], fixed["other-fp"]["copper_group"])
+        self.assertNotEqual(fixed["smd"]["copper_group"], fixed["other-number"]["copper_group"])
+        self.assertNotIn("copper_group", fixed["logo"])
+
     def test_local_clearance_including_zero_and_netless_obstacle(self):
         data = geometry()
         data["pads"][0]["local_clearance_mm"] = .05

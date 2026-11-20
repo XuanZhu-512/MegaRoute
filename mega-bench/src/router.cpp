@@ -135,7 +135,7 @@ struct Attempt {
 // Fallback candidates are checked before search and reduced to one fixed legal
 // terminal per layer. They never become a cloud of additional search roots.
 static std::vector<Point> access_candidates(const Board &b, const Shape &source,
-                                            const Shape &target, double width) {
+                                            const Shape &target, double width, double spacing = 0) {
     std::vector<Point> points{source.a, closest_copper_point(target.a, source)};
     auto add_ring = [&](const auto &ring) {
         for (size_t i = 0; i < ring.size(); ++i) {
@@ -156,8 +156,9 @@ static std::vector<Point> access_candidates(const Board &b, const Shape &source,
     if (box.x0 <= box.x1 && box.y0 <= box.y1) {
         // Bounded deterministic sampling complements geometric features. This is
         // a finite search, not a claim of complete continuous-space coverage.
-        int nx = std::min(16., std::ceil((box.x1-box.x0) / width));
-        int ny = std::min(16., std::ceil((box.y1-box.y0) / width));
+        double pitch = spacing > 0 ? spacing : width;
+        int nx = std::min(16., std::ceil((box.x1-box.x0) / pitch));
+        int ny = std::min(16., std::ceil((box.y1-box.y0) / pitch));
         for (int x = 0; x <= nx; ++x)
             for (int y = 0; y <= ny; ++y)
                 points.push_back({box.x0 + (box.x1-box.x0) * x / std::max(1, nx),
@@ -173,7 +174,9 @@ static Shape point_probe(Point p) {
 static Attempt search_pair(const Board &b, const Config &c, const Shape &source, const Shape &target,
                            const Net &n, const std::vector<Shape> &obstacles, const CopperIndex &index,
                            double alpha, bool adaptive, bool strict,
-                           const std::function<bool()> &expired, Observer observer) {
+                           const std::function<bool()> &expired, Observer observer,
+                           int access_variant = -1) {
+    bool alternate_access = access_variant >= 0;
     Attempt attempt;
     std::vector<Node> nodes;
     std::map<Bucket, std::vector<int>> spatial;
@@ -197,16 +200,40 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                 soft_clearance(violations, immutable, hard);
                 return !hard;
             };
-            if (legal(terminal.a)) { result[z] = terminal.a; continue; }
+            if (!alternate_access && legal(terminal.a)) { result[z] = terminal.a; continue; }
             if (!sampled) {
-                fallback = access_candidates(b, terminal, other, n.width);
+                fallback = access_candidates(b, terminal, other, n.width,
+                                             alternate_access ? c.d_min : 0);
                 sampled = true;
             }
             double best = std::numeric_limits<double>::infinity();
+            int best_exits = -1;
+            std::vector<std::tuple<int, double, double, double>> alternatives;
             for (auto p : fallback) {
                 if (expired()) break;
+                if (alternate_access && distance(p, terminal.a) <= eps) continue;
                 double score = heuristic(p, other.a);
-                if (score < best && legal(p)) { best = score; result[z] = p; }
+                if (!legal(p)) continue;
+                int exits = 0;
+                if (alternate_access) {
+                    for (const auto &next : candidates(p, z, other.a, z, n.width, b.layers)) {
+                        auto vs = check_shape(b, edge(p,z,next.p,next.layer,b,n), obstacles, &index);
+                        bool hard = false;
+                        soft_clearance(vs, immutable, hard);
+                        if (!hard) ++exits;
+                    }
+                }
+                if (exits > best_exits || (exits == best_exits && score < best)) {
+                    best_exits = exits; best = score; result[z] = p;
+                }
+                if (alternate_access)
+                    alternatives.emplace_back(-exits, score, p.x, p.y);
+            }
+            if (!alternatives.empty()) {
+                std::sort(alternatives.begin(), alternatives.end());
+                alternatives.erase(std::unique(alternatives.begin(), alternatives.end()), alternatives.end());
+                const auto &choice = alternatives[static_cast<size_t>(access_variant) % alternatives.size()];
+                result[z] = {std::get<2>(choice), std::get<3>(choice)};
             }
         }
         return result;
@@ -255,7 +282,8 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
     int found = -1;
     if (observer)
         observer({{"event", "search_start"}, {"net", n.id}, {"a", source.id}, {"b", target.id},
-                  {"strict", strict}, {"source_seed_count", sources.size()}, {"target_access_count", targets.size()}});
+                  {"strict", strict}, {"source_seed_count", sources.size()}, {"target_access_count", targets.size()},
+                  {"access_variant", access_variant}});
     while (!open.empty()) {
         if (expired()) {
             attempt.reason = "timeout";
@@ -308,8 +336,9 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
             int heading = -1;
             if (s.kind == "segment") {
                 int edge_heading = octant(s.a, s.b);
-                if (edge_heading < 0 || !turn_ok(current.heading, edge_heading))
+                if (edge_heading < 0 || !turn_ok(current.heading, edge_heading)) {
                     continue;
+                }
                 bool bad_corner = false;
                 for (auto old : index.query(s)) {
                     const auto &o = obstacles[old];
@@ -318,8 +347,9 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                         break;
                     }
                 }
-                if (bad_corner)
+                if (bad_corner) {
                     continue;
+                }
                 heading = edge_heading;
             }
             auto violations = check_shape(b, s, obstacles, &index);
@@ -332,8 +362,9 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
                     continue;
             } else {
                 drc = soft_clearance(violations, immutable, hard);
-                if (hard)
+                if (hard) {
                     continue;
+                }
             }
             Cost step = current.cost;
             if (current.z == next.layer)
@@ -377,8 +408,9 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
             // the required target coordinates impossible to represent. Exact
             // duplicates are still merged above and all DRC checks still apply.
             bool alignment = next.operation == "axis" || next.operation == "diagonal";
-            if (dense && !goal && !alignment)
+            if (dense && !goal && !alignment) {
                 continue;
+            }
             if (nodes.size() >= c.max_records) {
                 attempt.reason = "record_limit";
                 break;
@@ -388,7 +420,8 @@ static Attempt search_pair(const Board &b, const Config &c, const Shape &source,
     }
     if (found < 0) {
         if (observer)
-            observer({{"event", "search_failed"}, {"net", n.id}, {"reason", attempt.reason}, {"expanded", attempt.expanded}});
+            observer({{"event", "search_failed"}, {"net", n.id}, {"reason", attempt.reason},
+                      {"expanded", attempt.expanded}, {"access_variant", access_variant}});
         return attempt;
     }
     std::vector<int> path;
@@ -559,6 +592,17 @@ Result route(const Board &b, const Config &c, Observer observer) {
                                        graph.copper(), graph.index(), alpha, adaptive,
                                        !negotiated, expired, observer);
             result.expanded += attempt.expanded;
+            // A legal pad centre need not admit a path with the adaptive step.
+            // Retry with one other fixed legal access point per layer, selected
+            // before search; do not change the step, density, or trace width.
+            if (negotiated && !attempt.found && attempt.reason == "search_exhausted" && !expired()) {
+                auto retry = search_pair(b, c, pads.at(q.a), pads.at(q.b), net(b, q.net),
+                                           graph.copper(), graph.index(), alpha, adaptive,
+                                           !negotiated, expired, observer, iteration - 1);
+                result.expanded += retry.expanded;
+                retry.blockers.insert(attempt.blockers.begin(), attempt.blockers.end());
+                attempt = std::move(retry);
+            }
             if (!attempt.found) {
                 result.failures.push_back({{"net", q.net}, {"a", q.a}, {"b", q.b}, {"reason", attempt.reason}});
                 blocked_by.insert(attempt.blockers.begin(), attempt.blockers.end());

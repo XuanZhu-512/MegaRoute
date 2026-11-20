@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import sys
 import subprocess
 from pathlib import Path
@@ -11,6 +12,33 @@ from .adapt import adapt_files
 from .contracts import GeometryIRBundle, GeometryRoutingResult, KiCadCase
 from .converters import KiCadGeometryConverter
 from .runner import execute_run
+
+
+def _bounded_number(kind, minimum, maximum=None, exclusive=False):
+    def parse(value):
+        number = kind(value)
+        if (not math.isfinite(number) or number < minimum or (exclusive and number == minimum)
+                or (maximum is not None and number > maximum)):
+            upper = f"..{maximum}" if maximum is not None else " or greater"
+            expected = f"> {minimum}" if exclusive else f"{minimum}{upper}"
+            raise argparse.ArgumentTypeError(f"expected {expected}, got {value}")
+        return number
+    return parse
+
+
+# CLI spelling follows the JSON keys, using kebab-case and a backend prefix.
+MEGAROUTE_OPTIONS = {
+    "beta": (float, 1, None),
+    "d_min_mm": (float, 0, None),
+    "lambda_v": (float, 0, None),
+    "time_limit_s": (float, 0, None, True),
+    "max_expanded_nodes": (int, 1, 10000000),
+    "max_records": (int, 1, 10000000),
+    "max_iterations": (int, 1, 100),
+    "penalty_L": (float, 0, None, True),
+    "penalty_k": (float, 0, None, True),
+    "penalty_mu": (float, 0, None, True),
+}
 
 
 def main(argv=None):
@@ -52,6 +80,12 @@ def main(argv=None):
     run.add_argument("--expected-version", required=True)
     run.add_argument("--router", type=Path)
     run.add_argument("--config", type=Path)
+    tuning = run.add_argument_group("MegaRoute overrides", "Override --config (or the default config). The outer routing budget still applies.")
+    for key, bounds in MEGAROUTE_OPTIONS.items():
+        tuning.add_argument("--megaroute-" + key.lower().replace("_", "-"),
+                            dest="megaroute_" + key, type=_bounded_number(*bounds),
+                            help=f"override {key}")
+    tuning.add_argument("--megaroute-routing-order", choices=("fixed", "rotate_conflicts"))
     run.add_argument("--krt-root", type=Path)
     run.add_argument("--freerouting-jar", type=Path)
     run.add_argument("--tracemaker-exe", type=Path)
@@ -62,6 +96,13 @@ def main(argv=None):
     run.add_argument("--routing-seconds", type=float, default=300)
     run.add_argument("--evaluation-seconds", type=float, default=120)
     args = parser.parse_args(argv)
+    overrides = {}
+    if args.command == "run":
+        overrides = {key: getattr(args, "megaroute_" + key)
+                     for key in (*MEGAROUTE_OPTIONS, "routing_order")
+                     if getattr(args, "megaroute_" + key) is not None}
+        if overrides and args.backend != "megaroute":
+            parser.error("--megaroute-* options require --backend megaroute")
     try:
         if args.command == "export-geometry":
             converter = KiCadGeometryConverter(args.kicad_python, args.expected_version, args.max_error_mm)
@@ -91,7 +132,8 @@ def main(argv=None):
                                  tracemaker_exe=args.tracemaker_exe,
                                  tracemaker_threads=args.tracemaker_threads,
                                  tracemaker_variants=args.tracemaker_variants,
-                                 tracemaker_seed=args.tracemaker_seed)
+                                 tracemaker_seed=args.tracemaker_seed,
+                                 megaroute_overrides=overrides)
         elif args.command == "doctor":
             result = KiCadToolchain.load(args.toolchain).probe()
         elif args.command == "snapshot":

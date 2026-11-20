@@ -54,8 +54,14 @@ class WatchdogTests(unittest.TestCase):
                 with patch("pcb_bench.runner.subprocess.run", side_effect=process), \
                      patch("pcb_bench.runner.adapt_files"):
                     if published:
-                        _route_megaroute(converter, bundle, out, router, config, RunBudget(1, 60))
+                        _route_megaroute(converter, bundle, out, router, config, RunBudget(1, 60),
+                                         {"beta": 2, "time_limit_s": 3600})
                         identity = json.loads((out / "work/router_identity.json").read_text())
+                        effective = json.loads((out / "work/effective_config.json").read_text())
+                        self.assertEqual(effective["beta"], 2)
+                        self.assertEqual(effective["time_limit_s"], .9)
+                        self.assertEqual(identity["effective_config"], effective)
+                        self.assertEqual(json.loads(config.read_text())["time_limit_s"], 300)
                         self.assertTrue(identity["watchdog_terminated"])
                         self.assertTrue((out / "work/router.log").read_text().endswith("timeout"))
                     else:

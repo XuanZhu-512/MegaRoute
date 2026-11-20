@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from .cases import sha256
@@ -83,8 +84,20 @@ def connection_score(initial: dict, final: dict) -> dict:
             "connections_required": required, "connections_made": made}
 
 
+def pads_preserved(original_pads, routed_pads, original_keys=None, routed_keys=None) -> bool:
+    """Pads remain when their uuids do. Legacy boards get a new uuid on every load."""
+    original_ids = set(original_pads)
+    routed_ids = set(routed_pads)
+    if original_ids <= routed_ids:
+        return True
+    if original_keys is None or routed_keys is None or not original_ids.isdisjoint(routed_ids):
+        return False
+    return not (Counter(original_keys) - Counter(routed_keys))
+
+
 def build_metrics(case_id, backend, initial_groups, final_groups, original_copper, routed_copper,
-                  original_pads, routed_pads, drc_counts, route_time_s, drc_exit_code) -> dict:
+                  original_pads, routed_pads, drc_counts, route_time_s, drc_exit_code,
+                  original_pad_keys=None, routed_pad_keys=None) -> dict:
     score = connection_score(initial_groups, final_groups)
     original_ids = {item["uuid"] for item in original_copper}
     added = [item for item in routed_copper if item["uuid"] not in original_ids]
@@ -93,7 +106,7 @@ def build_metrics(case_id, backend, initial_groups, final_groups, original_coppe
     def length(items):
         return sum(item["length_mm"] for item in items if item["kind"] != "via")
 
-    invalid = not set(original_pads) <= set(routed_pads)
+    invalid = not pads_preserved(original_pads, routed_pads, original_pad_keys, routed_pad_keys)
     success = score["success"] and not invalid
     metrics = {
         "case_id": case_id,
@@ -182,7 +195,8 @@ class ExternalKiCadEvaluator:
         after = self._board_stats(routed.case.board, budget)
         metrics = build_metrics(self.case_id, self.backend, before["pad_groups"], after["pad_groups"],
                                 before["copper"], after["copper"], before["pad_uuids"], after["pad_uuids"],
-                                drc_counts, self.route_time_s, proc.returncode)
+                                drc_counts, self.route_time_s, proc.returncode,
+                                before.get("pad_keys"), after.get("pad_keys"))
         metadata = {"schema_version": "1.0", "connectivity_policy": "direct_pad_contacts_v2",
                     "metrics_worker_sha256": sha256(Path(__file__).with_name("kicad_metrics_worker.py")),
                     "toolchain": fingerprint}

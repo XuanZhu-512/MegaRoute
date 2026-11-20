@@ -6,6 +6,59 @@ import sys
 from pathlib import Path
 
 
+def board_outlines(p, board, error_mm):
+    """Recover overlapping circular cutouts without discarding removed material.
+
+    Only retry when the remaining native outline is valid. Circle disks must be
+    wholly inside it; Boolean subtraction unions duplicate/intersecting cutouts.
+    The source board and its exact circular primitives remain unchanged.
+    """
+    def native(outline):
+        if int(p.Version().split('.')[0]) >= 10:
+            return board.GetBoardPolygonOutlines(outline, False)
+        return board.GetBoardPolygonOutlines(outline)
+
+    outline = p.SHAPE_POLY_SET()
+    if native(outline) and outline.OutlineCount():
+        return outline, False
+    circles = [x for x in board.GetDrawings()
+               if x.GetLayer() == p.Edge_Cuts and x.GetShape() == p.SHAPE_T_CIRCLE]
+    if not circles:
+        raise ValueError("invalid or missing board outline (inference disabled)")
+    try:
+        for circle in circles:
+            board.Remove(circle)
+        outer = p.SHAPE_POLY_SET()
+        if not native(outer) or outer.OutlineCount() != 1:
+            raise ValueError("invalid non-circular board outline")
+        disks = p.SHAPE_POLY_SET()
+        for circle in circles:
+            center = circle.GetCenter()
+            radius = circle.GetRadius()
+            if radius <= 0:
+                raise ValueError("invalid circular cutout radius")
+            tolerance = min(p.FromMM(error_mm), radius / 2)
+            count = max(16, math.ceil(math.pi / math.acos(1 - tolerance / radius)))
+            disk = p.SHAPE_POLY_SET()
+            disk.NewOutline()
+            for i in range(count):
+                angle = 2 * math.pi * i / count
+                disk.Append(round(center.x + radius * math.cos(angle)),
+                            round(center.y + radius * math.sin(angle)))
+            outside = disk.CloneDropTriangulation()
+            outside.BooleanSubtract(outer)
+            if outside.OutlineCount():
+                raise ValueError("circular cutout is not inside board outline")
+            disks.BooleanAdd(disk)
+        outer.BooleanSubtract(disks)
+        if outer.OutlineCount() != 1:
+            raise ValueError("circular cutouts split board outline")
+        return outer, True
+    finally:
+        for circle in circles:
+            board.Add(circle)
+
+
 def export_geometry(p, board_path, expected_version, error_mm):
     actual = p.Version()
     if actual != expected_version:
@@ -91,14 +144,9 @@ def export_geometry(p, board_path, expected_version, error_mm):
         return [{"layer": layer_index[z], "polygons": [], "primitives": primitives}
                 for z in layers if item.IsOnLayer(z)]
 
-    outline = p.SHAPE_POLY_SET()
-    major = int(actual.split('.')[0])
-    if major >= 10:
-        valid = board.GetBoardPolygonOutlines(outline, False)
-    else:
-        valid = board.GetBoardPolygonOutlines(outline)
-    if not valid or not outline.OutlineCount():
-        raise ValueError("invalid or missing board outline (inference disabled)")
+    outline, normalized_cutouts = board_outlines(p, board, error_mm)
+    if normalized_cutouts:
+        warnings.append("overlapping circular Edge.Cuts normalized as cutout union")
 
     pads = []
     attributes = {p.PAD_ATTRIB_PTH: "plated_through_hole", p.PAD_ATTRIB_NPTH: "non_plated_hole",

@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "python"))
 from pcb_bench.backends import BACKENDS
 from pcb_bench.cases import load_case, snapshot, fingerprints
 from pcb_bench.cli import main
-from pcb_bench.contracts import UnsupportedCapability
+from pcb_bench.contracts import UnsupportedCapability, GeometryIRBundle, GeometryRoutingResult
 from pcb_bench.converters import KiCadGeometryConverter
 from pcb_bench.evaluation import KiCadToolchain, ExternalKiCadEvaluator
 from pcb_bench.pipeline import make_plan
@@ -85,6 +85,40 @@ class ArchitectureTests(unittest.TestCase):
     def test_converter_never_silently_passes_through(self):
         with self.assertRaises(UnsupportedCapability):
             KiCadGeometryConverter().import_board(load_case(self.manifest), self.root/'work')
+
+    def test_writeback_preserves_project_and_custom_rules_even_on_failure(self):
+        rules = self.root / 'board.kicad_dru'
+        rules.write_text('(version 1)')
+        self.data['custom_rules'] = rules.name
+        self.save()
+        self.project.write_text('{"board":{"design_settings":{"rules":{"min_copper_edge_clearance":0}}}}')
+        case = load_case(self.manifest)
+        before = fingerprints(case)
+        geometry = self.root / 'geometry.json'
+        geometry.write_text('{}')
+        routes = self.root / 'routes.json'
+        routes.write_text('{"copper":[{"kind":"segment"}]}')
+        bundle = GeometryIRBundle(geometry, geometry, geometry, case, before)
+        converter = KiCadGeometryConverter('python', '9.0.8')
+        for outcome in ('success', 'error', 'timeout'):
+            out = self.root / outcome
+            def worker(command, **kwargs):
+                board = Path(command[command.index('--out') + 1])
+                board.with_suffix('.kicad_pro').write_text('{"migrated":true}')
+                board.with_suffix('.kicad_dru').unlink()
+                if outcome == 'timeout':
+                    raise subprocess.TimeoutExpired(command, 120)
+                return subprocess.CompletedProcess(command, int(outcome == 'error'), '{}', 'failed')
+            with self.subTest(outcome=outcome), patch('pcb_bench.converters.subprocess.run', side_effect=worker):
+                if outcome == 'success':
+                    converter.export_routes(bundle, GeometryRoutingResult(routes), out)
+                else:
+                    expected = subprocess.TimeoutExpired if outcome == 'timeout' else RuntimeError
+                    with self.assertRaises(expected):
+                        converter.export_routes(bundle, GeometryRoutingResult(routes), out)
+                self.assertEqual((out / self.project.name).read_bytes(), self.project.read_bytes())
+                self.assertEqual((out / rules.name).read_bytes(), rules.read_bytes())
+                self.assertEqual(fingerprints(case), before)
 
     def test_version_exact_match_and_no_score_fallback(self):
         lock = KiCadToolchain('kicad-cli', '9.0.8')

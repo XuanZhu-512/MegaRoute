@@ -74,7 +74,10 @@ def execute_run(case_path, backend, out, toolchain_path, kicad_python, expected_
                 router=None, config=None, krt_root=None, krt_runner=None,
                 freerouting_jar=None, max_passes=10,
                 routing_seconds=300, evaluation_seconds=120,
-                tracemaker_exe=None, tracemaker_threads=1, tracemaker_variants=1, tracemaker_seed=1):
+                tracemaker_exe=None, tracemaker_threads=1, tracemaker_variants=1, tracemaker_seed=1,
+                megaroute_overrides=None):
+    if megaroute_overrides and backend != "megaroute":
+        raise ValueError("MegaRoute overrides require the megaroute backend")
     spec = backend_spec(backend)
     if backend != "megaroute":
         spec.preflight()
@@ -101,7 +104,7 @@ def execute_run(case_path, backend, out, toolchain_path, kicad_python, expected_
         _preview(kicad_python, bundle.board_ir, out / "preview", env)
         budget = RunBudget(routing_seconds, evaluation_seconds)
         if backend == "megaroute":
-            route_time = _route_megaroute(converter, bundle, out, router, config, budget)
+            route_time = _route_megaroute(converter, bundle, out, router, config, budget, megaroute_overrides)
             manifest["router"] = json.loads((out / "work" / "router_identity.json").read_text())
         elif backend == "krt":
             route_time = _route_krt(kicad_python, bundle, out, krt_root or DEFAULT_KRT_ROOT,
@@ -152,7 +155,7 @@ def execute_run(case_path, backend, out, toolchain_path, kicad_python, expected_
         raise
 
 
-def _route_megaroute(converter, bundle, out, router, config, budget):
+def _route_megaroute(converter, bundle, out, router, config, budget, overrides=None):
     default_router = router is None
     router = Path(router) if router else BENCH / "build" / "dev" / "megaroute_cli"
     config = router_config(config)
@@ -170,7 +173,7 @@ def _route_megaroute(converter, bundle, out, router, config, budget):
     current = hashlib.sha256(digests.encode()).hexdigest()
     if default_router and identity["source_fingerprint"] != current:
         raise RuntimeError("MegaRoute binary is stale; run cmake --build mega-bench/build/dev")
-    effective = effective_router_config(json.loads(config.read_text()), budget)
+    effective = effective_router_config(json.loads(config.read_text()), budget, overrides)
     effective_path = out / "work" / "effective_config.json"
     _write(effective_path, effective)
     identity.update(executable=str(router.resolve()), executable_sha256=sha256(router),
@@ -214,10 +217,11 @@ def _route_megaroute(converter, bundle, out, router, config, budget):
     return elapsed
 
 
-def effective_router_config(config, budget):
+def effective_router_config(config, budget, overrides=None):
     """Leave time for checkpoint/final serialization within the process watchdog."""
     effective = dict(config)
-    internal_limit = config.get("time_limit_s", 60)
+    effective.update(overrides or {})
+    internal_limit = effective.get("time_limit_s", 60)
     allowance = budget.routing_seconds - min(10, budget.routing_seconds * .1)
     effective["time_limit_s"] = min(internal_limit, allowance)
     return effective

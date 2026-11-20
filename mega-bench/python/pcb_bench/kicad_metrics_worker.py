@@ -17,10 +17,15 @@ def board_stats(p, board_path, expected_version):
     visited = set()
     groups = {}
     pad_ids = []
+    pad_keys = []
     electrical = []
     for footprint in board.GetFootprints():
+        reference = footprint.GetReference()
         for pad in footprint.Pads():
             pad_ids.append(pad.m_Uuid.AsString())
+            # Legacy KiCad files have no pad uuids. KiCad assigns new ones on every
+            # load, so reference plus pad number is the identity that survives saving.
+            pad_keys.append(f"{reference}:{pad.GetNumber()}")
             if pad.GetNetCode() != 0:
                 electrical.append(pad)
     for pad in electrical:
@@ -46,7 +51,7 @@ def board_stats(p, board_path, expected_version):
         kind = "via" if isinstance(item, p.PCB_VIA) else "segment"
         length = 0.0 if kind == "via" else float(p.ToMM(item.GetLength()))
         copper.append({"uuid": item.m_Uuid.AsString(), "kind": kind, "length_mm": length})
-    return {"pad_groups": groups, "pad_uuids": pad_ids, "copper": copper}
+    return {"pad_groups": groups, "pad_uuids": pad_ids, "pad_keys": pad_keys, "copper": copper}
 
 
 def main():

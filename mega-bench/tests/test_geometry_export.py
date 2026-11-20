@@ -141,6 +141,39 @@ print(json.dumps([layer['name'] for layer in geometry['layers']]))
 @unittest.skipUnless(os.getenv('KICAD_PYTHON') and os.getenv('KICAD_VERSION'),
                      'native KiCad Python/version not configured')
 class NativeRuleSemanticsTests(unittest.TestCase):
+    def test_overlapping_cutouts_are_holes_and_source_primitives_survive(self):
+        code = '''
+import pcbnew as p
+from pcb_bench.kicad_export_worker import board_outlines
+v = lambda x,y: p.VECTOR2I(p.FromMM(x),p.FromMM(y))
+b = p.BOARD()
+for a,z in [((0,0),(20,0)),((20,0),(20,20)),((20,20),(0,20)),((0,20),(0,0))]:
+    s=p.PCB_SHAPE(b);s.SetShape(p.SHAPE_T_SEGMENT);s.SetLayer(p.Edge_Cuts)
+    s.SetStart(v(*a));s.SetEnd(v(*z));b.Add(s)
+for x,y in [(5,5),(5,5),(6,5),(15,15)]:
+    s=p.PCB_SHAPE(b);s.SetShape(p.SHAPE_T_CIRCLE);s.SetLayer(p.Edge_Cuts)
+    s.SetCenter(v(x,y));s.SetEnd(v(x+1,y));b.Add(s)
+ids = {s.m_Uuid.AsString() for s in b.GetDrawings()}
+o,normalized=board_outlines(p,b,.005)
+assert normalized and o.OutlineCount()==1 and o.HoleCount(0)==2
+assert {s.m_Uuid.AsString() for s in b.GetDrawings()}==ids
+# An outside circle must not silently become a notch or inferred outline.
+s=p.PCB_SHAPE(b);s.SetShape(p.SHAPE_T_CIRCLE);s.SetLayer(p.Edge_Cuts)
+s.SetCenter(v(20,10));s.SetEnd(v(22,10));b.Add(s)
+try:
+    board_outlines(p,b,.005)
+except ValueError:
+    pass
+else:
+    raise AssertionError('outside cutout accepted')
+assert len(list(b.GetDrawings()))==9
+'''
+        env = dict(os.environ)
+        env['PYTHONPATH'] = str(ROOT / 'python') + os.pathsep + env.get('PYTHONPATH', '')
+        proc = subprocess.run([os.environ['KICAD_PYTHON'], '-c', code],
+                              env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(proc.returncode, 0, proc.stderr or proc.stdout)
+
     def test_local_overrides_and_copper_text_use_native_geometry(self):
         # Entirely synthetic; no dataset boards or routing experiments are involved.
         code = '''

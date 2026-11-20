@@ -75,6 +75,31 @@ def _via_radius(center, item):
     return radius
 
 
+def _routing_via(design, classes, resolved):
+    """Choose one shared through via; board minima are constraints, not a preset.
+
+    The engine currently has one via size for all nets. Use the largest requested
+    dimensions among active classes, then enforce the board's manufacturing limits.
+    Round upwards to KiCad's integer nanometres so writeback cannot shrink a ring.
+    """
+    def nm(value):
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError("invalid via dimension")
+        return math.ceil(round(value * 1_000_000, 6))
+
+    used = {resolved[name] for name in resolved} or {"Default"}
+    if not used <= classes.keys():
+        raise ValueError("unknown net class in via selection")
+    drill = max([nm(design["min_through_hole_diameter"])] +
+                [nm(classes[name].get("via_drill", design["min_through_hole_diameter"])) for name in used])
+    if drill <= 0:
+        raise ValueError("through via drill must be positive")
+    diameter = max([nm(design["min_via_diameter"]),
+                    drill + max(1, 2 * nm(design["min_via_annular_width"]))] +
+                   [nm(classes[name].get("via_diameter", design["min_via_diameter"])) for name in used])
+    return diameter / 1_000_000, drill / 1_000_000
+
+
 def adapt_geometry(geometry, rules):
     if geometry.get("schema_version") != "kicad-geometry-1.0" or geometry.get("units") != "mm":
         raise ValueError("expected kicad-geometry-1.0 in mm")
@@ -85,6 +110,7 @@ def adapt_geometry(geometry, rules):
         raise ValueError("project rules have no Default net class")
     net_names = [net["name"] for net in geometry["nets"] if net.get("code")]
     resolved = resolve_net_classes(net_settings, net_names)
+    via_diameter, via_drill = _routing_via(design, classes, resolved)
     outlines = geometry["outline"]
     if len(outlines) != 1:
         raise ValueError("unsupported_feature: multiple board outlines")
@@ -107,6 +133,7 @@ def adapt_geometry(geometry, rules):
     pads = []
     fixed = []
     normalized_clearances = []
+    ignored_pads = []
     def clearance(item):
         value = item.get("local_clearance_mm")
         if value is None:
@@ -117,16 +144,31 @@ def adapt_geometry(geometry, rules):
             # zero/fallback semantics, and keep net/board minimum checks intact.
             normalized_clearances.append({"id": item["id"], "raw_mm": value, "effective_override_mm": 0})
         return {"clearance_override": max(0, value)}
+    # Non-plated copper on separate layers is not a vertical connection. Model
+    # each layer independently, including connector pads with different outlines.
+    pad_parts = []
     for pad in geometry["pads"]:
+        if pad.get("attribute") in ("smd", "connector") and len(pad["copper"]) > 1:
+            for part in pad["copper"]:
+                pad_parts.append({**pad, "id": f"{pad['id']}:L{part['layer']}", "copper": [part]})
+        else:
+            pad_parts.append(pad)
+    for pad in pad_parts:
         attribute = pad.get("attribute")
         if attribute == "plated_through_hole":
             plated = True
-        elif attribute in ("smd", "non_plated_hole"):
+        elif attribute in ("smd", "non_plated_hole", "connector"):
             plated = False
         else:
             raise ValueError(f"unsupported_feature: pad attribute {attribute}")
         copper = pad["copper"]
         if not copper:
+            # A non-electrical, drill-free, non-copper auxiliary pad has no
+            # routing geometry. Keep it in the immutable KiCad board only.
+            if (attribute in ("smd", "connector") and not pad.get("net_name") and
+                    not pad.get("net_code", 0) and pad.get("drill_size_mm") == [0, 0]):
+                ignored_pads.append({"id": pad["id"], "reason": "non_copper_non_electrical_pad"})
+                continue
             raise ValueError(f"pad {pad['id']} has no copper")
         center = _point(pad["position_mm"])
         shape = _shared_outline(copper)
@@ -145,6 +187,11 @@ def adapt_geometry(geometry, rules):
             key: shape[key] for key in ("kind", "radius", "points", "holes") if key in shape}}
         record.update(clearance(pad))
         if obstacle:
+            # KiCad permits overlapping pieces of one numbered pad in a
+            # footprint, even when no net is assigned. Do not exempt separate
+            # pad numbers, footprints, or unnumbered decorative copper.
+            if not net_name and pad.get("number") and pad.get("footprint_uuid"):
+                record["copper_group"] = "pad:" + json.dumps([pad["footprint_uuid"], pad["number"]])
             if plated and len(shape["layers"]) > 1:
                 record["plated"] = True
                 fixed.append(record)
@@ -211,11 +258,13 @@ def adapt_geometry(geometry, rules):
             "rules": {"min_width": design["min_track_width"], "clearance": design["min_clearance"],
                       "fixed_boundary_policy": "kicad_edges",
                       "edge_clearance": design["min_copper_edge_clearance"],
-                      "via_diameter": design["min_via_diameter"],
-                      "via_drill": design["min_through_hole_diameter"],
+                      "via_diameter": via_diameter,
+                      "via_drill": via_drill,
                       "min_annular": design["min_via_annular_width"]}}
     if normalized_clearances:
         board["metadata"] = {"normalized_local_clearances": normalized_clearances}
+    if ignored_pads:
+        board.setdefault("metadata", {})["ignored_pads"] = ignored_pads
     return board
 
 

@@ -74,15 +74,25 @@ class KiCadGeometryConverter:
         report = {"added": 0, "uuids": [], "preserved_without_routes": not copper}
         if copper:
             worker = Path(__file__).with_name("kicad_write_worker.py")
-            proc = subprocess.run([str(self.python_executable), str(worker), "--board", str(copied.board),
-                                   "--out", str(copied.board), "--routes", str(routes.added_copper),
-                                   "--geometry", str(bundle.board_ir),
-                                   "--expected-version", self.expected_version],
-                                  capture_output=True, text=True, timeout=120, env=self.env)
+            # KiCad may migrate/rewrite the sibling project when saving a legacy
+            # PCB. Routing must never change the rules used for evaluation.
+            rule_assets = {path: path.read_bytes() for path in (copied.project, copied.custom_rules) if path}
+            try:
+                proc = subprocess.run([str(self.python_executable), str(worker), "--board", str(copied.board),
+                                       "--out", str(copied.board), "--routes", str(routes.added_copper),
+                                       "--geometry", str(bundle.board_ir),
+                                       "--expected-version", self.expected_version],
+                                      capture_output=True, text=True, timeout=120, env=self.env)
+            finally:
+                for path, content in rule_assets.items():
+                    path.write_bytes(content)
             if proc.returncode:
                 raise RuntimeError(f"KiCad route writeback failed: {proc.stderr.strip()}")
             report = json.loads(proc.stdout)
         if fingerprints(bundle.source_case) != initial:
             raise RuntimeError("original source changed during writeback")
+        output_hashes = fingerprints(copied)
+        if any(sha != output_hashes[key] for key, sha in initial.items() if key != "board"):
+            raise RuntimeError("writeback changed project or custom rules")
         (workdir / "writeback_report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         return RoutedKiCadCase(copied, raw_artifacts=(copied.board,), diagnostics=report)

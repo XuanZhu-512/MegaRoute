@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "algorithm": "megaroute",
+  "beta": 5,
+  "d_min_mm": 0.0254,
+  "lambda_v": 1,
+  "time_limit_s": 1200,
+  "max_expanded_nodes": 1000000,
+  "max_records": 2000000,
+  "max_iterations": 100,
+  "penalty_L": 200,
+  "penalty_k": 0.4,
+  "penalty_mu": 10,
+  "routing_order": "rotate_conflicts"
+}

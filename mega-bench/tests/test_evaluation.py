@@ -53,6 +53,20 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue(dropped["invalid_output"])
         self.assertFalse(dropped["clean_pass"])
         self.assertFalse(dropped["success"])
+        legacy = build_metrics(
+            "case1", "tracemaker", {"NET1": 2}, {"NET1": 1}, [], [],
+            ["generated-a", "generated-b"], ["saved-a", "saved-b"],
+            {"drv_error_count": 0, "drv_warning_count": 0, "unconnected_item_count": 0},
+            1, 0, ["R1:1", "R1:2"], ["R1:1", "R1:2"])
+        self.assertFalse(legacy["invalid_output"])
+        self.assertTrue(legacy["success"])
+        removed = build_metrics(
+            "case1", "tracemaker", {"NET1": 2}, {"NET1": 1}, [], [],
+            ["generated-a", "generated-b"], ["saved-a"],
+            {"drv_error_count": 0, "drv_warning_count": 0, "unconnected_item_count": 0},
+            1, 0, ["R1:1", "R1:2"], ["R1:1"])
+        self.assertTrue(removed["invalid_output"])
+        self.assertFalse(removed["success"])
 
     def test_krt_uses_default_class_and_paper_arguments(self):
         geometry = {"layers": [{"index": 1, "name": "B.Cu"}, {"index": 0, "name": "F.Cu"}]}

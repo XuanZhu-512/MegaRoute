@@ -122,6 +122,56 @@ int main() {
         b.copper[1] = rectangle("target", {23,10}, 22,9,24,11);
         auto impossible = route(b, config("adaptive_strict"));
         expect(evaluate(b, impossible.copper)["C_routed"] == 0, "fully exterior pad is not reached");
+
+        // Full-width escape through a narrow corridor depends on the fixed
+        // access point even though the nominal pad centre itself is legal.
+        Board corridor;
+        corridor.layers = 1;
+        corridor.outline = {{0,0},{7.62,0},{7.62,18.415},{0,18.415}};
+        corridor.nets = {{"A",.8,.1524},{"B",.1524,.1524}};
+        corridor.document = {{"pads", {{{"id","source"}},{{"id","target"}}}}};
+        auto add = [&](const char *id, const char *net, Point center,
+                       double x0, double y0, double x1, double y1) {
+            auto s = rectangle(id,center,x0,y0,x1,y1); s.net = net;
+            corridor.copper.push_back(s);
+        };
+        add("source", "A", {0.955,6.08076}, .55495,5.68071,1.35505,6.48081);
+        add("target", "A", {4.76504,4.42976}, 4.26466,4.13004,5.26542,4.72948);
+        add("obstacle2", "B", {2.855,6.08076}, 2.45495,5.68071,3.25505,6.48081);
+        add("obstacle3", "B", {1.905,4.08178}, 1.50495,3.68173,2.30505,4.48183);
+        add("obstacle4", "A", {1.524,8.382}, 1.016,7.366,2.032,9.398);
+        add("obstacle5", "B", {3.81,8.382}, 3.302,7.366,4.318,9.398);
+        add("obstacle6", "B", {6.096,8.382}, 5.588,7.366,6.604,9.398);
+        add("obstacle7", "B", {3.81,1.778}, 1.9812,.762,5.6388,2.794);
+        add("obstacle8", "B", {4.76504,5.73024}, 4.26466,5.43052,5.26542,6.02996);
+        add("obstacle9", "B", {6.66496,5.08}, 6.16458,4.78028,7.16534,5.37972);
+        for (int rotation = 0; rotation < 4; ++rotation) {
+            auto transformed = corridor;
+            auto move = [&](Point p) {
+                for (int r=0; r<rotation; ++r) p = {-p.y,p.x};
+                return p + Point{-30,45};
+            };
+            for (auto &p : transformed.outline) p = move(p);
+            for (auto &s : transformed.copper) {
+                s.a = move(s.a); s.b = move(s.b);
+                for (auto &p : s.polygon) p = move(p);
+            }
+            Config c = config("megaroute"); c.max_iterations = 40;
+            bool retried = false;
+            auto result = route(transformed,c,[&](const Json &event) {
+                if (event.at("event") == "search_start") {
+                    retried = retried || event.at("access_variant").get<int>() >= 0;
+                    expect(event.at("source_seed_count") == 1 && event.at("target_access_count") == 1,
+                           "access retries keep one fixed terminal per layer");
+                }
+            });
+            auto metrics = evaluate(transformed,result.copper);
+            expect(retried && metrics["C_routed"] == 1 && metrics["DRC"] == 0,
+                   "bounded access alternatives connect corridor after centre search exhausts");
+            for (const auto &s : result.copper)
+                if (s.kind == "segment") expect(std::abs(2*s.radius-.8) < eps,
+                                                 "terminal retry never narrows the trace");
+        }
         std::cout << "terminal region checks passed\n";
     } catch (const std::exception &e) {
         std::cerr << e.what() << '\n'; return 1;
